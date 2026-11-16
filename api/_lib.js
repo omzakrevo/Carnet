@@ -10,6 +10,8 @@ const CFG = {
   moisAutorises: [1, 3, 6, 12],
   pays: process.env.SASPAY_COUNTRY || 'BF',
   saspay: 'https://api.saspay.me/api/v1',
+  comptesRepo: process.env.COMPTES_REPO || 'carnet-comptes', // dépôt GitHub PRIVÉ des comptes
+  essaiHeures: Number(process.env.ESSAI_HEURES || 24),
 };
 
 function need(name) {
@@ -30,8 +32,8 @@ function addMonths(expire, n) {
 }
 
 // ---------- GitHub : lecture / écriture des fichiers JSON du dépôt ----------
-async function gh(path, opts = {}) {
-  const url = `https://api.github.com/repos/${CFG.owner}/${CFG.repo}/contents/${path}` + (opts.method ? '' : `?ref=${encodeURIComponent(CFG.branch)}`);
+async function gh(path, opts = {}, repo = CFG.repo) {
+  const url = `https://api.github.com/repos/${CFG.owner}/${repo}/contents/${path}` + (opts.method ? '' : `?ref=${encodeURIComponent(CFG.branch)}`);
   return fetch(url, {
     ...opts,
     headers: {
@@ -43,14 +45,14 @@ async function gh(path, opts = {}) {
     },
   });
 }
-async function readJson(path, fallback) {
-  const r = await gh(path);
+async function readJson(path, fallback, repo) {
+  const r = await gh(path, {}, repo);
   if (r.status === 404) return { data: JSON.parse(JSON.stringify(fallback)), sha: null };
   if (!r.ok) throw new Error(`Lecture GitHub impossible (${r.status})`);
   const j = await r.json();
   return { data: JSON.parse(Buffer.from(j.content, 'base64').toString('utf8')), sha: j.sha };
 }
-async function writeJson(path, data, sha, message) {
+async function writeJson(path, data, sha, message, repo) {
   const r = await gh(path, {
     method: 'PUT',
     body: JSON.stringify({
@@ -58,18 +60,18 @@ async function writeJson(path, data, sha, message) {
       content: Buffer.from(JSON.stringify(data, null, 2) + '\n', 'utf8').toString('base64'),
       ...(sha ? { sha } : {}),
     }),
-  });
+  }, repo);
   if (r.status === 409 || r.status === 422) return false; // le fichier a changé entre-temps : on relit
   if (!r.ok) throw new Error(`Écriture GitHub impossible (${r.status})`);
   return true;
 }
 // Lit, modifie et réécrit un fichier ; réessaie si quelqu'un l'a modifié en même temps.
 // mutate(data) renvoie false s'il n'y a rien à écrire.
-async function updateJson(path, fallback, message, mutate) {
+async function updateJson(path, fallback, message, mutate, repo) {
   for (let i = 0; i < 4; i++) {
-    const { data, sha } = await readJson(path, fallback);
+    const { data, sha } = await readJson(path, fallback, repo);
     if (mutate(data) === false) return data;
-    if (await writeJson(path, data, sha, message)) return data;
+    if (await writeJson(path, data, sha, message, repo)) return data;
   }
   throw new Error('GitHub est occupé, réessayez dans un instant.');
 }
@@ -100,6 +102,29 @@ const normKey = k => String(k || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 const hashKey = k => crypto.createHash('sha256').update(normKey(k)).digest('hex');
 const normCode = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20);
 
+// ---------- Comptes ----------
+// Numéro normalisé : chiffres seulement, indicatif 226 ajouté aux numéros burkinabè à 8 chiffres
+function normTel(t) {
+  let d = String(t || '').replace(/\D/g, '');
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.length === 8) d = '226' + d;
+  return d;
+}
+// Mot de passe : PBKDF2-SHA256 (le même calcul est fait dans admin.html pour réinitialiser un mot de passe)
+const hashPwd = (pwd, sel) => crypto.pbkdf2Sync(String(pwd), sel, 100000, 32, 'sha256').toString('hex');
+const newSalt = () => crypto.randomBytes(16).toString('hex');
+const samePwd = (pwd, acc) => {
+  const a = Buffer.from(hashPwd(pwd, acc.sel), 'hex'), b = Buffer.from(String(acc.mdp || ''), 'hex');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+};
+const SESSION_JOURS = 180;
+const newSession = tel => sign({ typ: 'session', tel, exp: Date.now() + SESSION_JOURS * 864e5 });
+function session(token) {
+  const s = unsign(token);
+  return s && s.typ === 'session' && s.tel && s.exp > Date.now() ? s : null;
+}
+const comptePath = tel => `comptes/${tel}.json`;
+
 function body(req) {
   if (!req.body) return {};
   if (typeof req.body === 'string') { try { return JSON.parse(req.body); } catch { return {}; } }
@@ -110,4 +135,5 @@ function fail(res, e) {
   res.status(e.status || 500).json({ error: e.message || 'Erreur serveur' });
 }
 
-module.exports = { CFG, need, today, addMonths, readJson, updateJson, sign, unsign, keyFor, hashKey, normCode, body, fail };
+module.exports = { CFG, need, today, addMonths, readJson, writeJson, updateJson, sign, unsign, keyFor, hashKey, normCode, normTel,
+  hashPwd, newSalt, samePwd, newSession, session, comptePath, body, fail };

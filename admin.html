@@ -115,6 +115,15 @@
     </div>
 
     <div class="sheet">
+      <h2 class="script">Comptes des utilisateurs</h2>
+      <p class="muted">Les comptes sont dans le dépôt privé <b id="accRepo">carnet-comptes</b>. Il faut le jeton GitHub ci-dessus pour les voir.</p>
+      <button class="btn ghost wide" id="loadAcc" type="button">Afficher les comptes</button>
+      <input class="search" id="accSearch" type="search" placeholder="Rechercher un nom, une boutique, un numéro" hidden style="margin-top:10px">
+      <div class="table-wrap"><table class="lic-table"><thead><tr><th>Utilisateur</th><th>Statut</th><th></th></tr></thead><tbody id="accRows"></tbody></table></div>
+      <p class="muted" id="accInfo2"></p>
+    </div>
+
+    <div class="sheet">
       <h2 class="script">Vérifier une clé</h2>
       <form class="form" id="checkForm">
         <label>Clé<input name="key" placeholder="CARNET-XXXX-XXXX-XXXX" autocomplete="off"></label>
@@ -324,6 +333,80 @@
       }
       $('#dirty').textContent = 'Tout est enregistré sur GitHub ✔';
       toast('Enregistré sur GitHub ✔');
+    });
+
+    // ---------- Comptes (dépôt privé) ----------
+    const accRepo = CFG.comptesRepo || 'carnet-comptes';
+    $('#accRepo').textContent = m ? `${m[1]}/${accRepo}` : accRepo;
+    let comptes = [];
+    const ghH = () => ({ Authorization: `Bearer ${$('#ghToken').value.trim()}`, Accept: 'application/vnd.github+json' });
+    const accApi = f => `https://api.github.com/repos/${m[1]}/${accRepo}/contents/${f}`;
+    const fromB64 = b => new TextDecoder().decode(Uint8Array.from(atob(b.replace(/\n/g, '')), c => c.charCodeAt(0)));
+    const toB64 = s => { let bin = ''; new TextEncoder().encode(s).forEach(x => (bin += String.fromCharCode(x))); return btoa(bin); };
+    // Même calcul que le serveur (api/_lib.js) : PBKDF2-SHA256, 100 000 tours
+    async function hashPwd(pwd, sel) {
+      const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(pwd), 'PBKDF2', false, ['deriveBits']);
+      const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: new TextEncoder().encode(sel), iterations: 100000 }, k, 256);
+      return [...new Uint8Array(bits)].map(x => x.toString(16).padStart(2, '0')).join('');
+    }
+    const essaiH = Number(CFG.essaiHeures ?? 24);
+    function accStatut(a) {
+      if (a.bloque) return ['Suspendu', 'ko'];
+      if (a.cle) return ['Abonné', 'ok'];
+      const fin = (a.essaiDebut || 0) + essaiH * 36e5;
+      return fin > Date.now() ? [`Essai (encore ${Math.ceil((fin - Date.now()) / 36e5)} h)`, 'ok'] : ['Essai terminé', 'ko'];
+    }
+    function renderAcc() {
+      const q = $('#accSearch').value.trim().toLowerCase();
+      const list = comptes.filter(({ a }) => !q || `${a.prenom} ${a.nom} ${a.boutique} ${a.telephone} ${a.tel}`.toLowerCase().includes(q));
+      $('#accRows').innerHTML = list.map(({ a }) => {
+        const [st, cls] = accStatut(a);
+        return `<tr><td><b>${esc(a.prenom)} ${esc(a.nom)}</b><br>${esc(a.boutique)}<br><span class="muted">${esc(a.telephone)} · inscrit le ${esc((a.cree || '').slice(0, 10))}${a.parrain ? ' · parrain ' + esc(a.parrain) : ''}</span></td>
+          <td class="st ${cls}">${st}</td>
+          <td><div class="row-btns"><button data-t="${esc(a.tel)}" data-act="pwd">Nouveau mot de passe</button>
+            <button data-t="${esc(a.tel)}" data-act="essai">+24 h d'essai</button>
+            <button data-t="${esc(a.tel)}" data-act="bloque">${a.bloque ? 'Réactiver' : 'Suspendre'}</button></div></td></tr>`;
+      }).join('');
+      $('#accInfo2').textContent = `${comptes.length} compte(s) · ${comptes.filter(({ a }) => a.cle).length} abonné(s)`;
+    }
+    $('#loadAcc').addEventListener('click', async () => {
+      if (!$('#ghToken').value.trim()) return toast('Collez d\'abord votre jeton GitHub');
+      if (!m) return;
+      try { localStorage.setItem('carnet-admin-token', $('#ghToken').value.trim()); } catch {}
+      $('#accInfo2').textContent = 'Chargement…';
+      try {
+        const r = await fetch(accApi('comptes') + '?ref=main', { headers: ghH() });
+        if (r.status === 404) { comptes = []; renderAcc(); $('#accInfo2').textContent = 'Aucun compte (ou dépôt introuvable : vérifiez qu\'il existe et que le jeton y a accès).'; return; }
+        if (!r.ok) throw new Error(r.status === 401 ? 'jeton refusé' : 'erreur ' + r.status);
+        const files = (await r.json()).filter(f => f.name.endsWith('.json'));
+        comptes = await Promise.all(files.map(async f => {
+          const j = await (await fetch(accApi(f.path) + '?ref=main', { headers: ghH() })).json();
+          return { a: JSON.parse(fromB64(j.content)), sha: j.sha, path: f.path };
+        }));
+        comptes.sort((x, y) => String(y.a.cree).localeCompare(String(x.a.cree)));
+        $('#accSearch').hidden = false; renderAcc();
+      } catch (err) { $('#accInfo2').textContent = 'Impossible de lire les comptes : ' + err.message; }
+    });
+    $('#accSearch').addEventListener('input', renderAcc);
+    $('#accRows').addEventListener('click', async e => {
+      const b = e.target.closest('button[data-act]'); if (!b) return;
+      const item = comptes.find(x => x.a.tel === b.dataset.t); if (!item) return;
+      const a = item.a; let msg;
+      if (b.dataset.act === 'pwd') {
+        const p = prompt(`Nouveau mot de passe pour ${a.prenom} ${a.nom} (6 caractères minimum) :`);
+        if (!p) return; if (p.length < 6) return toast('6 caractères minimum');
+        a.sel = [...crypto.getRandomValues(new Uint8Array(16))].map(x => x.toString(16).padStart(2, '0')).join('');
+        a.mdp = await hashPwd(p, a.sel); msg = 'Réinitialisation du mot de passe';
+      }
+      if (b.dataset.act === 'essai') { a.essaiDebut = Math.max(a.essaiDebut || 0, Date.now() - essaiH * 36e5) + 24 * 36e5; msg = 'Essai prolongé de 24 h'; }
+      if (b.dataset.act === 'bloque') { a.bloque = !a.bloque; msg = a.bloque ? 'Compte suspendu' : 'Compte réactivé'; }
+      try {
+        const r = await fetch(accApi(item.path), { method: 'PUT', headers: { ...ghH(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: `Administration : ${msg} (${a.boutique})`, content: toB64(JSON.stringify(a, null, 2) + '\n'), sha: item.sha, branch: 'main' }) });
+        if (!r.ok) throw new Error('erreur ' + r.status);
+        item.sha = (await r.json()).content.sha;
+        renderAcc(); toast(msg + ' ✔');
+      } catch (err) { toast('Échec : ' + err.message + ' (rechargez les comptes)'); }
     });
 
     load().then(loadPC);

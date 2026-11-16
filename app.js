@@ -439,6 +439,8 @@
       : trialActive()
         ? `<b>Essai gratuit</b> jusqu'au ${new Date(trialEnd()).toLocaleString('fr-FR', { dateStyle: 'full', timeStyle: 'short' })} (encore ${leftText(trialEnd() - Date.now())}).`
         : 'Aucune licence active.';
+    const c = acc && acc.compte;
+    $('#accInfo').innerHTML = c ? `<b>${esc(c.prenom)} ${esc(c.nom)}</b><br>${esc(c.boutique)}<br>${esc(c.telephone)}${c.cree ? `<br>Inscrit le ${dayFmt.format(new Date(c.cree))}` : ''}` : '';
     $('#licRenew').textContent = lic ? 'Prolonger mon abonnement' : `M'abonner (${money(CFG.prixMois)} / mois)`;
     $('#licCopy').hidden = !lic;
     $('#licChange').textContent = lic ? 'Changer de clé de licence' : "J'ai une clé de licence";
@@ -704,12 +706,14 @@
   // Chaque licence y est enregistrée par l'empreinte SHA-256 de sa clé : la clé elle-même n'est jamais publiée.
   const CFG = Object.assign({ licenceUrl: '', horsLigneMaxJours: 30, alerteJours: 7, verifHeures: 6, paiementActif: false, prixMois: 1000 }, window.CARNET_CONFIG || {});
   CFG.essaiHeures = Number(CFG.essaiHeures ?? 24);
-  // ---------- Essai gratuit ----------
-  const TRIAL_KEY = 'carnet-essai-v1';
-  const trialStart = () => { const t = readJSON(TRIAL_KEY); return t && t.debut ? t.debut : 0; };
-  const trialEnd = () => trialStart() + CFG.essaiHeures * 36e5;
-  const trialActive = () => !lic && trialStart() > 0 && Date.now() < trialEnd();
-  const trialOver = () => !lic && trialStart() > 0 && Date.now() >= trialEnd();
+  // ---------- Compte et essai gratuit ----------
+  // L'essai gratuit commence à l'inscription et il est enregistré dans le compte (serveur) : il ne peut pas être relancé.
+  const ACC_KEY = 'carnet-compte-v1';
+  let acc = null;
+  const trialEnd = () => (acc && acc.compte && acc.compte.essaiFin) || 0;
+  const trialStart = trialEnd;
+  const trialActive = () => !lic && Date.now() < trialEnd();
+  const trialOver = () => !lic && trialEnd() > 0 && Date.now() >= trialEnd();
   function leftText(ms) {
     const tot = Math.max(1, Math.ceil(ms / 6e4)), h = Math.floor(tot / 60), m = tot % 60;
     return h ? `${h} h${m ? ' ' + String(m).padStart(2, '0') + ' min' : ''}` : `${m} min`;
@@ -767,13 +771,15 @@
     $('#lockErr').hidden = !err; $('#lockErr').textContent = err || '';
     if (lic && lic.key) $('#lockForm').elements.key.value = lic.key;
     $('#lockBtn').textContent = lic ? 'Réessayer' : 'Activer';
-    // L'essai gratuit n'est proposé qu'une fois, avant tout abonnement
-    $('#lockTrial').hidden = !(CFG.essaiHeures > 0 && !lic && (!trialStart() || trialActive()));
-    $('#lockTrial').textContent = trialActive() ? `Continuer l'essai gratuit (encore ${leftText(trialEnd() - Date.now())})` : `Essayer gratuitement pendant ${CFG.essaiHeures} heures`;
+    $('#auth').hidden = true;
+    // Pendant l'essai, on peut revenir à l'application depuis l'écran de clé
+    $('#lockTrial').hidden = !trialActive();
+    $('#lockTrial').textContent = `Continuer l'essai gratuit (encore ${leftText(trialEnd() - Date.now())})`;
     if (trialOver() && !msg) $('#lockMsg').textContent = `Votre essai gratuit de ${CFG.essaiHeures} heures est terminé. Abonnez-vous pour continuer : vos données sont conservées.`;
     renderVendor();
-    [vDlg, dDlg, aDlg, apDlg, pDlg, cDlg].forEach(d => d.open && d.close());
+    closeDialogs();
   }
+  const closeDialogs = () => [vDlg, dDlg, aDlg, apDlg, pDlg, cDlg].forEach(d => d.open && d.close());
   let started = false;
   function unlock() {
     document.body.classList.remove('locked');
@@ -797,13 +803,7 @@
     if (lic || !trialStart() || document.body.classList.contains('locked')) return;
     if (trialOver()) lock(); else renderBanner();
   }, 30e3);
-  $('#lockTrial').addEventListener('click', () => {
-    if (trialActive()) return unlock();
-    if (trialStart()) return;
-    writeJSON(TRIAL_KEY, { debut: Date.now() });
-    unlock();
-    toast(`Essai gratuit activé pour ${CFG.essaiHeures} heures. Bonne découverte !`);
-  });
+  $('#lockTrial').addEventListener('click', () => { if (trialActive()) unlock(); });
 
   // Vérification en ligne de la licence enregistrée
   async function verifyOnline() {
@@ -853,6 +853,7 @@
       const first = !lic;
       lic = { key: e.target.elements.key.value.trim().toUpperCase(), hash, boutique: entry.boutique || '', telephone: entry.telephone || '', expire: entry.expire || '', lastCheck: Date.now() };
       writeJSON(LIC_KEY, lic);
+      if (acc) api('lier', { cle: lic.key }).then(j => { acc.compte = j.compte; writeJSON(ACC_KEY, acc); }).catch(() => {});
       // Pré-remplit le profil avec les informations de la boutique
       if (!db.profile.marque && entry.boutique) db.profile.marque = entry.boutique;
       if (!db.profile.contacts && entry.telephone) db.profile.contacts = entry.telephone;
@@ -881,12 +882,12 @@
   payForm.elements.mois.addEventListener('change', payTotal);
   function openPay(renew) {
     const f = payForm.elements;
-    payForm.classList.toggle('renew', !!renew);
+    payForm.classList.toggle('renew', !!renew || !!acc); // avec un compte, la boutique et le parrain sont déjà connus
     payForm.dataset.renew = renew ? '1' : '';
     $('#payTitle').textContent = renew ? 'Prolonger mon abonnement' : `Abonnement ${money(CFG.prixMois)} / mois`;
     f.boutique.value = db.profile.marque || '';
-    f.boutique.required = !renew;
-    f.telephone.value = (db.profile.contacts || '').match(/[+\d][\d\s.-]{6,}/)?.[0]?.trim() || '';
+    f.boutique.required = !renew && !acc;
+    f.telephone.value = acc ? acc.compte.telephone : (db.profile.contacts || '').match(/[+\d][\d\s.-]{6,}/)?.[0]?.trim() || '';
     try { f.parrain.value = localStorage.getItem(REF_KEY) || ''; } catch { f.parrain.value = ''; }
     f.mois.value = '1'; payTotal();
     $('#payErr').hidden = true;
@@ -907,6 +908,7 @@
         body: JSON.stringify({
           boutique: f.boutique.value.trim(), telephone: f.telephone.value.trim(), email: f.email.value.trim(),
           mois: Number(f.mois.value), parrain: renew ? '' : f.parrain.value.trim(), renouveler: renew && lic ? lic.hash : '',
+          token: acc ? acc.token : '',
         }),
       });
       const j = await r.json().catch(() => ({}));
@@ -983,5 +985,115 @@
     if (document.visibilityState === 'visible' && lic && Date.now() - (lic.lastCheck || 0) > CFG.verifHeures * 36e5) verifyOnline();
   });
 
-  bootLicence();
+  // ---------- Inscription / connexion ----------
+  async function api(action, data = {}) {
+    const r = await fetch('/api/compte', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, ...data, token: acc ? acc.token : '' }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { const e = new Error(j.error || 'Erreur ' + r.status); e.status = r.status; throw e; }
+    return j;
+  }
+  const netMsg = err => err.message === 'Failed to fetch' ? 'Pas de connexion internet : la création du compte et la connexion nécessitent internet.' : err.message;
+  function setAuthTab(t) {
+    $$('.seg button').forEach(b => b.classList.toggle('active', b.dataset.auth === t));
+    $('#regForm').hidden = t !== 'inscription';
+    $('#loginForm').hidden = t !== 'connexion';
+    $('#authErr').hidden = true;
+  }
+  $$('.seg button').forEach(b => b.addEventListener('click', () => setAuthTab(b.dataset.auth)));
+  function showAuth(tab, err) {
+    document.body.classList.add('locked');
+    $('#lock').hidden = true; $('#auth').hidden = false;
+    setAuthTab(tab || 'inscription');
+    if (err) { $('#authErr').textContent = err; $('#authErr').hidden = false; }
+    $('#regTrial').textContent = `${CFG.essaiHeures} heures`;
+    try { $('#regForm').elements.parrain.value = localStorage.getItem(REF_KEY) || ''; } catch {}
+    renderVendor(); $('#authContact').innerHTML = $('#lockContact').innerHTML;
+    closeDialogs();
+  }
+  // Remplit le profil de la boutique avec les informations du compte
+  function applyCompte() {
+    const c = acc.compte;
+    if (!db.profile.marque) db.profile.marque = c.boutique;
+    if (!db.profile.responsable) db.profile.responsable = `${c.prenom} ${c.nom}`.trim();
+    if (!db.profile.contacts) db.profile.contacts = c.telephone;
+    save(); renderHeader();
+  }
+  // Le compte a une clé que ce téléphone n'a pas encore (connexion sur un nouveau téléphone)
+  async function licFromCompte() {
+    const c = acc && acc.compte;
+    if (!c || !c.cle || lic) return false;
+    lic = { key: c.cle, hash: await sha256(normKey(c.cle)), boutique: c.boutique, telephone: '', expire: '', lastCheck: Date.now() };
+    writeJSON(LIC_KEY, lic);
+    return true;
+  }
+  async function onAuth(j, welcome) {
+    acc = { token: j.token, compte: j.compte };
+    writeJSON(ACC_KEY, acc);
+    applyCompte();
+    $('#auth').hidden = true;
+    await licFromCompte();
+    await bootLicence();
+    if (welcome) toast(welcome);
+  }
+  async function submitAuth(form, action, payload, welcome) {
+    const btn = form.querySelector('button[type=submit]'), label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Patientez…'; $('#authErr').hidden = true;
+    try { await onAuth(await api(action, payload), welcome); }
+    catch (err) { $('#authErr').textContent = netMsg(err); $('#authErr').hidden = false; }
+    finally { btn.disabled = false; btn.textContent = label; }
+  }
+  $('#regForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const f = e.target.elements;
+    submitAuth(e.target, 'inscription', {
+      prenom: f.prenom.value, nom: f.nom.value, boutique: f.boutique.value, telephone: f.telephone.value,
+      motdepasse: f.motdepasse.value, parrain: f.parrain.value, cle: lic ? lic.key : '',
+    }, `Bienvenue ${f.prenom.value.trim()} ! Votre essai gratuit de ${CFG.essaiHeures} heures commence.`);
+  });
+  $('#loginForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const f = e.target.elements;
+    submitAuth(e.target, 'connexion', { telephone: f.telephone.value, motdepasse: f.motdepasse.value }, 'Connexion réussie ✔');
+  });
+  function logout(msg) {
+    acc = null; writeJSON(ACC_KEY, null);
+    lic = null; writeJSON(LIC_KEY, null);
+    $('#licBanner').hidden = true;
+    showAuth('connexion', msg);
+  }
+  // Met à jour le compte depuis le serveur (essai, clé payée sur un autre téléphone, compte suspendu…)
+  async function refreshCompte() {
+    if (!acc) return;
+    try {
+      const j = await api('moi');
+      acc.compte = j.compte; writeJSON(ACC_KEY, acc);
+      if (await licFromCompte()) await verifyOnline();
+      else if (!lic) { if (trialActive()) unlock(); else lock(); }
+    } catch (err) { if (err.status === 401 || err.status === 403) logout(err.message); }
+  }
+  $('#accLogout').addEventListener('click', () => {
+    if (!confirm('Vous déconnecter ? Les données saisies restent sur ce téléphone.')) return;
+    logout();
+  });
+  $('#lockLogout').addEventListener('click', () => logout());
+  const pwdDlg = $('#pwdDlg'), pwdForm = $('#pwdForm');
+  $('#accPwd').addEventListener('click', () => { pwdForm.reset(); $('#pwdErr').hidden = true; pwdDlg.showModal(); });
+  pwdForm.addEventListener('submit', async e => {
+    if (e.submitter && e.submitter.value === 'cancel') return;
+    e.preventDefault();
+    try {
+      await api('motdepasse', { ancien: pwdForm.elements.ancien.value, nouveau: pwdForm.elements.nouveau.value });
+      pwdDlg.close(); toast('Mot de passe modifié ✔');
+    } catch (err) { $('#pwdErr').textContent = err.message === 'Failed to fetch' ? 'Pas de connexion internet.' : err.message; $('#pwdErr').hidden = false; }
+  });
+
+  async function boot() {
+    acc = readJSON(ACC_KEY);
+    if (!acc || !acc.token) return showAuth('inscription');
+    await licFromCompte();
+    await bootLicence();
+    refreshCompte();
+  }
+  boot();
 })();

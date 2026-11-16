@@ -17,6 +17,9 @@ window.CARNET_CONFIG = {
   paiementActif: true,
   prixMois: 1000,
 
-  // Essai gratuit au premier lancement (en heures). 0 pour le désactiver.
-  essaiHeures: 24
+  // Essai gratuit après l'inscription (en heures). Doit être identique à ESSAI_HEURES sur Vercel (24 par défaut).
+  essaiHeures: 24,
+
+  // Dépôt GitHub PRIVÉ où sont enregistrés les comptes (même propriétaire que le dépôt des licences)
+  comptesRepo: 'carnet-comptes'
 };

@@ -11,7 +11,7 @@ La version numérique du carnet papier « Suivi des ventes » : une application 
 - **Bilan du mois** : chiffre d'affaires, dépenses, bénéfice, montant encaissé, ventes par jour, meilleurs produits, répartition par mode de paiement.
 - **Articles** : le catalogue de la boutique (prix de vente, prix d'achat, stock, catégorie). Dans une vente, on touche un article (raccourcis des plus vendus, liste ou saisie) et son prix s'ajoute automatiquement ; le stock baisse à chaque vente.
 - **Clients** : client ordinaire en un clic, client retrouvé par son numéro, liste des clients, client du mois, fiche avec l'historique des achats.
-- **Essai gratuit de 24 heures**, puis **abonnement** : 1 000 FCFA par mois, payé par Orange Money, Moov Money ou carte via SasPay. La clé est créée automatiquement et les licences sont stockées sur GitHub (voir [LICENCES.md](LICENCES.md)).
+- **Compte obligatoire** (prénom, nom, boutique, téléphone, mot de passe), **essai gratuit de 24 heures**, puis **abonnement** : 1 000 FCFA par mois, payé par Orange Money, Moov Money ou carte via SasPay. La clé est créée automatiquement et les licences sont stockées sur GitHub (voir [LICENCES.md](LICENCES.md)).
 - **Parrains** : chaque revendeur a son lien `?ref=CODE` et gagne 25 % des paiements des boutiques qu'il amène (`/parrain.html`).
 - **Profil** (bouton ⚙️) : nom de la marque, responsable, contacts, réseaux sociaux, devise (FCFA par défaut).
 - **Export** vers Excel (CSV), **sauvegarde et restauration** (fichier JSON), **impression** de la page du jour.

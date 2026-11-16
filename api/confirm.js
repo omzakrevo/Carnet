@@ -1,6 +1,6 @@
 // POST /api/confirm : vérifie le paiement chez SasPay puis crée ou prolonge la licence sur GitHub
 // et enregistre la commission du parrain. Peut être appelé plusieurs fois sans risque.
-const { CFG, need, today, addMonths, updateJson, unsign, keyFor, hashKey, body, fail } = require('./_lib');
+const { CFG, need, today, addMonths, updateJson, unsign, keyFor, hashKey, comptePath, body, fail } = require('./_lib');
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
@@ -51,6 +51,16 @@ module.exports = async (req, res) => {
           vente: c.montant, montant: Math.round(c.montant * CFG.commission), session: c.sid, paye: false,
         });
       });
+    }
+
+    // Rattache la clé au compte : l'utilisateur la retrouve en se connectant sur un autre téléphone
+    if (c.tel && cle) {
+      try {
+        await updateJson(comptePath(c.tel), null, `Licence ${entree.id} rattachée au compte`, a => {
+          if (!a || a.cle === cle) return false;
+          a.cle = cle;
+        }, CFG.comptesRepo);
+      } catch (e) { console.error('Rattachement au compte impossible', e); }
     }
 
     res.status(200).json({ statut: 'ok', cle, licence: { id: entree.id, hash, boutique: entree.boutique, expire: entree.expire } });

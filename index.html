@@ -24,6 +24,38 @@
   </header>
   <div class="lic-banner" id="licBanner" hidden></div>
 
+  <!-- Inscription / connexion (obligatoire au premier lancement) -->
+  <section class="lock" id="auth" hidden>
+    <div class="lock-card">
+      <img src="icon.svg" alt="" width="72" height="72">
+      <h2 class="script big">Carnet de gestion des ventes</h2>
+      <div class="seg" role="tablist">
+        <button type="button" class="active" data-auth="inscription">Créer mon compte</button>
+        <button type="button" data-auth="connexion">Me connecter</button>
+      </div>
+      <form class="form" id="regForm" autocomplete="on">
+        <p class="muted" style="margin:0">Inscrivez-vous et profitez de <b id="regTrial">24 heures</b> d'essai gratuit.</p>
+        <div class="two-col">
+          <label>Prénom<input name="prenom" required autocomplete="given-name"></label>
+          <label>Nom<input name="nom" required autocomplete="family-name"></label>
+        </div>
+        <label>Nom de la boutique<input name="boutique" required autocomplete="organization"></label>
+        <label>Numéro de téléphone<input name="telephone" type="tel" inputmode="tel" required autocomplete="tel" placeholder="+226 70 00 00 00"></label>
+        <label>Mot de passe <small>(6 caractères minimum)</small><input name="motdepasse" type="password" required minlength="6" autocomplete="new-password"></label>
+        <label>Code parrain <small>(facultatif)</small><input name="parrain" autocapitalize="characters" autocomplete="off"></label>
+        <button class="btn" type="submit">Créer mon compte</button>
+      </form>
+      <form class="form" id="loginForm" hidden autocomplete="on">
+        <label>Numéro de téléphone<input name="telephone" type="tel" inputmode="tel" required autocomplete="tel"></label>
+        <label>Mot de passe<input name="motdepasse" type="password" required autocomplete="current-password"></label>
+        <button class="btn" type="submit">Me connecter</button>
+        <p class="muted" style="margin:0;text-align:center">Mot de passe oublié ? Contactez-nous, nous le réinitialiserons.</p>
+      </form>
+      <p class="lock-err" id="authErr" hidden></p>
+      <div class="lock-contact" id="authContact"></div>
+    </div>
+  </section>
+
   <!-- Écran de licence -->
   <section class="lock" id="lock" hidden>
     <div class="lock-card">
@@ -43,6 +75,7 @@
       </form>
       <p class="lock-err" id="lockErr" hidden></p>
       <div class="lock-contact" id="lockContact"></div>
+      <button class="btn ghost wide" type="button" id="lockLogout">Changer de compte</button>
     </div>
   </section>
 
@@ -201,6 +234,14 @@
         </form>
       </div>
       <div class="sheet">
+        <h2 class="script">Mon compte</h2>
+        <div id="accInfo" class="muted"></div>
+        <div class="btn-col" style="margin-top:10px">
+          <button class="btn ghost" id="accPwd">Changer mon mot de passe</button>
+          <button class="btn danger" id="accLogout">Me déconnecter</button>
+        </div>
+      </div>
+      <div class="sheet">
         <h2 class="script">Licence</h2>
         <div id="licInfo" class="muted"></div>
         <div class="btn-col" style="margin-top:10px">
@@ -333,6 +374,21 @@
         <button class="btn ghost" value="cancel" formnovalidate>Annuler</button>
         <span class="grow"></span>
         <button class="btn" value="pay" type="submit" id="payBtn">Payer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Changer le mot de passe -->
+  <dialog id="pwdDlg">
+    <form method="dialog" id="pwdForm" class="form">
+      <h3>Mot de passe</h3>
+      <label>Mot de passe actuel<input name="ancien" type="password" required autocomplete="current-password"></label>
+      <label>Nouveau mot de passe<input name="nouveau" type="password" required minlength="6" autocomplete="new-password"></label>
+      <p class="lock-err" id="pwdErr" hidden></p>
+      <div class="dlg-actions">
+        <button class="btn ghost" value="cancel" formnovalidate>Annuler</button>
+        <span class="grow"></span>
+        <button class="btn" value="save" type="submit">Enregistrer</button>
       </div>
     </form>
   </dialog>

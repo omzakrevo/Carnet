@@ -40,7 +40,9 @@ La partie `vendeur` contient **votre nom et votre numéro**. Ils s'affichent sur
 
 ## Comportement côté client
 
-- **Essai gratuit** : au premier lancement, la personne peut essayer l'application **24 heures** sans payer (bouton « Essayer gratuitement »). Un bandeau affiche le temps restant. Ensuite l'application se bloque jusqu'au paiement, sans effacer les données saisies. La durée se règle dans `config.js` (`essaiHeures`, `0` pour désactiver).
+- **Inscription obligatoire** : au premier lancement, la personne crée son compte (prénom, nom, nom de la boutique, téléphone, mot de passe). Elle peut aussi se connecter à un compte existant.
+- **Essai gratuit** : l'essai de **24 heures** commence à l'inscription. Il est enregistré dans le compte, sur le serveur : se déconnecter, changer de téléphone ou effacer le navigateur ne le relance pas. Un bandeau affiche le temps restant. Ensuite l'application se bloque jusqu'au paiement, sans effacer les données saisies.
+- **Changement de téléphone** : la personne se connecte avec son numéro et son mot de passe, et sa licence payée revient automatiquement. Ses ventes, elles, restent sur l'ancien téléphone : elle peut les transférer avec « Télécharger une sauvegarde » puis « Restaurer ».
 - **Activation** : internet est nécessaire.
 - **Vérification** : au démarrage et au retour dans l'application (au plus toutes les 6 heures).
 - **Sans internet** : l'application continue de marcher **30 jours** après la dernière vérification.
@@ -52,7 +54,7 @@ Ces durées se règlent dans `config.js`.
 ## Sécurité : ce qu'il faut savoir
 
 - Les clés ne sont **jamais publiées** : le fichier ne contient que leur empreinte SHA-256. Lire `licences.json` ne permet donc pas de retrouver une clé.
-- L'essai gratuit est mémorisé sur le téléphone : une personne qui efface les données de son navigateur peut relancer un essai, mais elle perd alors aussi toutes ses ventes.
+- Il n'y a qu'un compte (donc un seul essai gratuit) par numéro de téléphone. Une personne qui a plusieurs numéros peut créer plusieurs comptes : vérifier les numéros par SMS demanderait un fournisseur payant.
 - La vérification se fait dans le navigateur du client. Quelqu'un qui s'y connaît en informatique pourrait la contourner. C'est le compromis d'un système simple, sans serveur : il suffit pour une clientèle de boutiques, pas contre un pirate déterminé.
 
 ## Paiement en ligne (SasPay) : 1 000 FCFA / mois
@@ -72,8 +74,10 @@ Si le client ferme la page après avoir payé, le paiement est confirmé à la p
 | Variable             | Valeur                                                                                                                          |
 |----------------------|---------------------------------------------------------------------------------------------------------------------------------|
 | `SASPAY_API_KEY`     | Votre clé secrète SasPay `sk_live_…` (tableau de bord SasPay → clés API, droit PAYIN)                                           |
-| `GITHUB_TOKEN`       | Jeton GitHub « fine-grained » limité au dépôt `omzakrevo/Carnet`, avec la permission **Contents : Read and write**              |
+| `GITHUB_TOKEN`       | Jeton GitHub « fine-grained » limité aux dépôts `omzakrevo/Carnet` **et** `omzakrevo/carnet-comptes`, permission **Contents : Read and write** |
 | `LICENCE_SECRET`     | Texte secret aléatoire : il sert à fabriquer les clés et à signer les commandes. **Ne jamais le changer** une fois en service.   |
+| `COMPTES_REPO`       | Facultatif, `carnet-comptes` par défaut : le dépôt **privé** où sont enregistrés les comptes                                    |
+| `ESSAI_HEURES`       | Facultatif, `24` par défaut (gardez la même valeur que `essaiHeures` dans `config.js`)                                          |
 | `PRIX_MOIS`          | Facultatif, `1000` par défaut                                                                                                   |
 | `COMMISSION_PARRAIN` | Facultatif, `0.25` par défaut (25 %)                                                                                            |
 
@@ -98,3 +102,22 @@ Le dépôt GitHub est public : tout le monde peut lire `licences.json`, `parrain
 On y trouve les noms des boutiques et des parrains, les dates d'expiration et les montants des commissions.
 Les clés, elles, ne sont jamais publiées (seulement leur empreinte), et les paiements n'enregistrent pas le téléphone des clients.
 N'ajoutez pas de numéros de téléphone dans ces fichiers si vous voulez les garder privés.
+
+## Comptes des utilisateurs (dépôt GitHub privé)
+
+Les comptes sont dans le dépôt **privé** `omzakrevo/carnet-comptes`, un fichier par numéro : `comptes/22670112233.json`.
+Chaque fichier contient le prénom, le nom, la boutique, le téléphone, la date d'inscription, le début de l'essai, le code parrain et la clé de licence.
+Le mot de passe n'y est jamais en clair : seule son empreinte PBKDF2 est enregistrée.
+
+**À créer une seule fois** :
+
+1. Sur GitHub : **New repository**, nom `carnet-comptes`, cochez **Private**, puis cochez « Add a README file » (le dépôt ne doit pas être vide).
+2. Donnez au jeton `GITHUB_TOKEN` l'accès à ce dépôt (Settings → Developer settings → Fine-grained tokens → votre jeton → Repository access).
+
+Dans `/admin.html`, section **Comptes des utilisateurs** (le jeton GitHub est nécessaire), vous voyez tous les inscrits et leur statut (essai, abonné, suspendu). Les boutons permettent de :
+
+- **Nouveau mot de passe** : pour une personne qui l'a oublié ; vous lui communiquez le nouveau ;
+- **+24 h d'essai** : prolonger l'essai d'une personne ;
+- **Suspendre** : bloquer le compte. L'application se ferme à la prochaine vérification.
+
+La connexion reste valable 180 jours sur un téléphone. Ensuite, il faut se reconnecter.

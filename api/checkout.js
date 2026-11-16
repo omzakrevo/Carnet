@@ -1,10 +1,15 @@
 // POST /api/checkout : crée une page de paiement SasPay pour l'abonnement
-const { CFG, need, readJson, sign, normCode, body, fail } = require('./_lib');
+const { CFG, need, readJson, sign, normCode, session, comptePath, body, fail } = require('./_lib');
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
   try {
     const b = body(req);
+    // Compte de l'utilisateur connecté : sa boutique, son numéro et son parrain font foi
+    const s = session(b.token);
+    let compte = null;
+    if (s) { try { compte = (await readJson(comptePath(s.tel), null, CFG.comptesRepo)).data; } catch { compte = null; } }
+    if (compte) { b.boutique = b.boutique || compte.boutique; b.telephone = compte.telephone || b.telephone; if (compte.parrain) b.parrain = compte.parrain; }
     const mois = Number(b.mois);
     if (!CFG.moisAutorises.includes(mois)) return res.status(400).json({ error: 'Durée invalide.' });
     const boutique = String(b.boutique || '').trim().slice(0, 80);
@@ -55,7 +60,7 @@ module.exports = async (req, res) => {
       const msg = (j.error && (j.error.message || JSON.stringify(j.error))) || `erreur ${r.status}`;
       return res.status(502).json({ error: `SasPay : ${msg}` });
     }
-    const commande = sign({ sid: j.data.id, mois, montant, boutique: nom, parrain, renouveler, t: Date.now() });
+    const commande = sign({ sid: j.data.id, mois, montant, boutique: nom, parrain, renouveler, tel: compte ? compte.tel : '', t: Date.now() });
     res.status(200).json({ checkout_url: j.data.checkout_url, commande, montant });
   } catch (e) { fail(res, e); }
 };

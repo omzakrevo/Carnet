@@ -236,6 +236,11 @@ body.locked main, body.locked .tabs, body.locked .fab, body.locked .lic-banner, 
 .lock-contact { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line); font-size: 14px; color: var(--ink-soft); }
 .lock-contact:empty { display: none; }
 .lock-contact .cd-contact { justify-content: center; margin: 10px 0 0; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; background: var(--bg); border-radius: 22px; padding: 4px; margin: 14px 0 12px; }
+.seg button { border: none; background: none; border-radius: 18px; min-height: 40px; font-weight: 600; color: var(--ink-soft); cursor: pointer; }
+.seg button.active { background: var(--paper); color: var(--ink); box-shadow: var(--shadow); }
+.lock-card form[hidden] { display: none !important; }
+body.locked .icon-btn.gear { display: none !important; }
 .pay-box { background: var(--peach-soft); border-radius: 14px; padding: 14px; margin-top: 12px; }
 .pay-box .price { font-size: 15px; }
 .pay-box .price b { font-size: 26px; color: var(--accent); }
