@@ -1,6 +1,6 @@
 // Service worker : l'application fonctionne hors connexion
-const CACHE = 'carnet-v2';
-const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'manifest.json', 'icon.svg'];
+const CACHE = 'carnet-v3';
+const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'config.js', 'manifest.json', 'icon.svg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
@@ -11,6 +11,8 @@ self.addEventListener('activate', e => {
 // Réseau d'abord (pour recevoir les mises à jour), cache si hors ligne
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  // Le fichier des licences (GitHub) n'est jamais mis en cache
+  if (new URL(e.request.url).origin !== self.location.origin) return;
   e.respondWith(
     fetch(e.request)
       .then(r => { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return r; })

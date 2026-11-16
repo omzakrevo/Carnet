@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Gestion des licences</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body { padding-bottom: 40px; }
+    main { display: flex; flex-direction: column; gap: 12px; }
+    .keybox { font-family: ui-monospace, monospace; font-size: 22px; letter-spacing: .06em; text-align: center;
+      background: var(--peach-soft); border-radius: 12px; padding: 14px; font-weight: 700; user-select: all; }
+    textarea.json { font-family: ui-monospace, monospace; font-size: 12px; min-height: 260px; }
+    .lic-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .lic-table td, .lic-table th { border-bottom: 1px solid var(--line); padding: 8px 4px; text-align: left; vertical-align: top; }
+    .lic-table th { font-size: 11px; text-transform: uppercase; color: var(--ink-soft); }
+    .st { font-weight: 700; } .st.ok { color: var(--good); } .st.ko { color: var(--warn); }
+    .row-btns { display: flex; gap: 4px; flex-wrap: wrap; }
+    .row-btns button { border: 1px solid var(--line); background: var(--paper); border-radius: 14px; padding: 4px 8px; font-size: 12px; cursor: pointer; }
+    ol.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">🔑</span>
+      <div><div class="brand-name">Gestion des licences</div><div class="brand-sub">Carnet de gestion des ventes</div></div>
+    </div>
+  </header>
+  <main>
+    <div class="sheet">
+      <h2 class="script">Comment ça marche</h2>
+      <ol class="steps">
+        <li>Créez une licence ci-dessous et cliquez « Ajouter au fichier ».</li>
+        <li>Cliquez « Copier le fichier », puis « Ouvrir licences.json sur GitHub ».</li>
+        <li>Sur GitHub, sélectionnez tout le contenu, collez, puis « Commit changes ».</li>
+        <li>Envoyez la clé au client. Elle marche environ 5 minutes après l'enregistrement sur GitHub.</li>
+      </ol>
+    </div>
+
+    <div class="sheet">
+      <h2 class="script">Nouvelle licence</h2>
+      <form class="form" id="newForm">
+        <label>Nom de la boutique<input name="boutique" required placeholder="Ex : Bazar du coin"></label>
+        <label>Téléphone de la boutique<input name="telephone" type="tel" placeholder="+226 ..."></label>
+        <div class="two-col">
+          <label>Durée
+            <select name="duree">
+              <option value="1">1 mois</option><option value="3">3 mois</option><option value="6">6 mois</option>
+              <option value="12" selected>1 an</option><option value="0">Sans limite</option><option value="custom">Date précise…</option>
+            </select>
+          </label>
+          <label>Expire le<input name="expire" type="date"></label>
+        </div>
+        <label>Note (facultatif)<input name="note" placeholder="Ex : payé par Orange Money le …"></label>
+        <button class="btn" type="submit">Générer la clé</button>
+      </form>
+      <div id="result" hidden style="margin-top:12px">
+        <p class="muted">Clé à envoyer au client (elle n'est affichée qu'une fois : notez-la) :</p>
+        <div class="keybox" id="keyOut"></div>
+        <div class="btn-col" style="margin-top:10px">
+          <button class="btn ghost" id="copyKey" type="button">Copier la clé</button>
+          <button class="btn" id="addEntry" type="button">Ajouter au fichier</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sheet">
+      <h2 class="script">Licences enregistrées</h2>
+      <p class="muted" id="loadInfo">Chargement…</p>
+      <div class="table-wrap"><table class="lic-table"><thead><tr><th>Boutique</th><th>Expire</th><th>Statut</th><th></th></tr></thead><tbody id="licRows"></tbody></table></div>
+    </div>
+
+    <div class="sheet">
+      <h2 class="script">Fichier licences.json</h2>
+      <p class="muted">Contenu à coller sur GitHub. Vous pouvez aussi modifier le nom et le téléphone du vendeur affichés aux clients bloqués.</p>
+      <textarea class="json search" id="jsonOut" spellcheck="false"></textarea>
+      <div class="btn-col">
+        <button class="btn" id="copyJson" type="button">Copier le fichier</button>
+        <a class="btn ghost" id="ghLink" target="_blank" rel="noopener">Ouvrir licences.json sur GitHub</a>
+        <button class="btn ghost" id="reload" type="button">Recharger depuis GitHub</button>
+      </div>
+    </div>
+
+    <div class="sheet">
+      <h2 class="script">Vérifier une clé</h2>
+      <form class="form" id="checkForm">
+        <label>Clé<input name="key" placeholder="CARNET-XXXX-XXXX-XXXX" autocomplete="off"></label>
+        <button class="btn ghost" type="submit">Vérifier</button>
+      </form>
+      <p id="checkOut" class="muted"></p>
+    </div>
+  </main>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="config.js"></script>
+  <script>
+  (() => {
+    const $ = s => document.querySelector(s);
+    const CFG = window.CARNET_CONFIG || {};
+    // https://raw.githubusercontent.com/OWNER/REPO/BRANCH/PATH -> page d'édition GitHub
+    const m = (CFG.licenceUrl || '').match(/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)$/);
+    $('#ghLink').href = m ? `https://github.com/${m[1]}/${m[2]}/edit/${m[3]}/${m[4]}` : '#';
+    const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const normKey = k => String(k || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const pad = n => String(n).padStart(2, '0');
+    const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const today = () => iso(new Date());
+    const addMonths = (base, n) => { const d = base ? new Date(base + 'T00:00:00') : new Date(); d.setMonth(d.getMonth() + n); return iso(d); };
+    async function sha256(s) {
+      const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+      return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
+    }
+    function genKey() {
+      const r = crypto.getRandomValues(new Uint32Array(12));
+      const c = [...r].map(x => ALPHA[x % ALPHA.length]).join('');
+      return `CARNET-${c.slice(0, 4)}-${c.slice(4, 8)}-${c.slice(8, 12)}`;
+    }
+    let toastT;
+    const toast = msg => { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2200); };
+    const copy = async txt => { try { await navigator.clipboard.writeText(txt); toast('Copié ✔'); } catch { toast('Copie impossible : sélectionnez et copiez à la main'); } };
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    let data = { vendeur: { nom: '', telephone: '', whatsapp: '', message: 'Pour obtenir ou renouveler votre licence, contactez-nous :' }, licences: [] };
+    const readJson = () => { try { data = JSON.parse($('#jsonOut').value); return true; } catch { toast('Le fichier JSON contient une erreur'); return false; } };
+    const writeJson = () => { $('#jsonOut').value = JSON.stringify(data, null, 2) + '\n'; renderRows(); };
+    const statut = e => e.actif === false ? ['Suspendue', 'ko'] : (e.expire && e.expire < today()) ? ['Expirée', 'ko'] : ['Active', 'ok'];
+    function renderRows() {
+      $('#licRows').innerHTML = (data.licences || []).map((e, i) => {
+        const [s, cls] = statut(e);
+        return `<tr><td><b>${esc(e.boutique)}</b><br><span class="muted">${esc(e.id || '')} ${esc(e.telephone || '')}</span></td>
+          <td>${e.expire ? esc(e.expire) : 'Sans limite'}</td><td class="st ${cls}">${s}</td>
+          <td><div class="row-btns">
+            <button data-i="${i}" data-act="m1">+1 mois</button><button data-i="${i}" data-act="m12">+1 an</button>
+            <button data-i="${i}" data-act="toggle">${e.actif === false ? 'Réactiver' : 'Suspendre'}</button>
+            <button data-i="${i}" data-act="del">Supprimer</button></div></td></tr>`;
+      }).join('');
+    }
+    $('#licRows').addEventListener('click', e => {
+      const b = e.target.closest('button[data-act]'); if (!b || !readJson()) return;
+      const lic = data.licences[Number(b.dataset.i)];
+      const base = lic.expire && lic.expire > today() ? lic.expire : today();
+      if (b.dataset.act === 'm1') lic.expire = addMonths(base, 1);
+      if (b.dataset.act === 'm12') lic.expire = addMonths(base, 12);
+      if (b.dataset.act === 'toggle') lic.actif = lic.actif === false;
+      if (b.dataset.act === 'del') { if (!confirm(`Supprimer la licence de « ${lic.boutique} » ?`)) return; data.licences.splice(Number(b.dataset.i), 1); }
+      writeJson(); toast('Modifié : pensez à copier le fichier sur GitHub');
+    });
+    $('#jsonOut').addEventListener('change', () => { if (readJson()) renderRows(); });
+
+    async function load() {
+      $('#loadInfo').textContent = 'Chargement depuis GitHub…';
+      try {
+        const r = await fetch(CFG.licenceUrl + '?t=' + Date.now(), { cache: 'no-store' });
+        if (!r.ok) throw new Error(r.status);
+        data = await r.json();
+        $('#loadInfo').textContent = `${(data.licences || []).length} licence(s) sur GitHub.`;
+      } catch (err) {
+        $('#loadInfo').textContent = `Impossible de lire le fichier sur GitHub (${err.message}). Vous pouvez partir d'un fichier vide.`;
+      }
+      data.licences = data.licences || [];
+      writeJson();
+    }
+    $('#reload').addEventListener('click', load);
+
+    const f = $('#newForm');
+    const syncDate = () => {
+      const v = f.elements.duree.value;
+      f.elements.expire.disabled = v !== 'custom';
+      if (v !== 'custom') f.elements.expire.value = v === '0' ? '' : addMonths('', Number(v));
+    };
+    f.elements.duree.addEventListener('change', syncDate); syncDate();
+
+    let pending = null;
+    f.addEventListener('submit', async e => {
+      e.preventDefault();
+      const key = genKey();
+      const n = (data.licences || []).reduce((mx, x) => Math.max(mx, parseInt(String(x.id || '').replace(/\D/g, '')) || 0), 0) + 1;
+      pending = {
+        id: 'L' + String(n).padStart(4, '0'),
+        boutique: f.elements.boutique.value.trim(),
+        telephone: f.elements.telephone.value.trim(),
+        hash: await sha256(normKey(key)),
+        expire: f.elements.duree.value === '0' ? '' : f.elements.expire.value,
+        actif: true,
+        note: f.elements.note.value.trim(),
+        cree: today()
+      };
+      $('#keyOut').textContent = key;
+      $('#result').hidden = false;
+    });
+    $('#copyKey').addEventListener('click', () => copy($('#keyOut').textContent));
+    $('#addEntry').addEventListener('click', () => {
+      if (!pending || !readJson()) return;
+      data.licences.push(pending); pending = null; writeJson();
+      $('#addEntry').disabled = true; setTimeout(() => ($('#addEntry').disabled = false), 800);
+      toast('Ajoutée : copiez le fichier et collez-le sur GitHub');
+    });
+    $('#copyJson').addEventListener('click', () => { if (readJson()) copy($('#jsonOut').value); });
+
+    $('#checkForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const h = await sha256(normKey(e.target.elements.key.value));
+      readJson();
+      const lic = (data.licences || []).find(x => x.hash === h);
+      $('#checkOut').innerHTML = lic ? `Clé de <b>${esc(lic.boutique)}</b> : ${statut(lic)[0]}${lic.expire ? ` (expire le ${esc(lic.expire)})` : ''}` : 'Clé inconnue.';
+    });
+
+    load();
+  })();
+  </script>
+</body>
+</html>

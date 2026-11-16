@@ -17,10 +17,27 @@
       <span class="brand-mark" aria-hidden="true">C</span>
       <div>
         <div class="brand-name" id="brandName">Carnet de gestion des ventes</div>
-        <div class="brand-sub" id="brandSub">Touchez « Profil » pour personnaliser</div>
+        <div class="brand-sub" id="brandSub">Touchez ⚙️ pour personnaliser</div>
       </div>
+      <button class="icon-btn gear" id="btnProfil" aria-label="Profil et réglages">⚙️</button>
     </div>
   </header>
+  <div class="lic-banner" id="licBanner" hidden></div>
+
+  <!-- Écran de licence -->
+  <section class="lock" id="lock" hidden>
+    <div class="lock-card">
+      <img src="icon.svg" alt="" width="72" height="72">
+      <h2 class="script big">Carnet de gestion des ventes</h2>
+      <p id="lockMsg">Entrez votre clé de licence pour activer l'application.</p>
+      <form id="lockForm" class="form">
+        <label>Clé de licence<input name="key" placeholder="CARNET-XXXX-XXXX-XXXX" autocapitalize="characters" autocomplete="off" spellcheck="false" required></label>
+        <button class="btn" type="submit" id="lockBtn">Activer</button>
+      </form>
+      <p class="lock-err" id="lockErr" hidden></p>
+      <div class="lock-contact" id="lockContact"></div>
+    </div>
+  </section>
 
   <main id="app">
     <!-- VENTES -->
@@ -116,6 +133,22 @@
       </div>
     </section>
 
+    <!-- ARTICLES -->
+    <section class="view" id="view-articles" hidden>
+      <div class="stats">
+        <div class="stat"><span>Articles</span><strong id="aNb">0</strong></div>
+        <div class="stat warn"><span>En rupture</span><strong id="aOut">0</strong></div>
+        <div class="stat accent"><span>Valeur du stock</span><strong id="aVal">0</strong></div>
+      </div>
+      <div class="sheet">
+        <h2 class="script">Mes articles</h2>
+        <input class="search" id="aSearch" type="search" placeholder="Rechercher un article">
+        <ul class="client-list" id="articleList"></ul>
+        <p class="empty" id="articleEmpty">Aucun article. Touchez <b>+</b> pour ajouter les articles de votre boutique.</p>
+        <button class="btn ghost wide" id="importArticles" hidden>Créer les articles à partir de mes ventes</button>
+      </div>
+    </section>
+
     <!-- BILAN -->
     <section class="view" id="view-bilan" hidden>
       <div class="datebar">
@@ -161,6 +194,14 @@
         </form>
       </div>
       <div class="sheet">
+        <h2 class="script">Licence</h2>
+        <div id="licInfo" class="muted"></div>
+        <div class="btn-col" style="margin-top:10px">
+          <button class="btn ghost" id="licCheck">Vérifier ma licence maintenant</button>
+          <button class="btn ghost" id="licChange">Changer de clé de licence</button>
+        </div>
+      </div>
+      <div class="sheet">
         <h2 class="script">Sauvegarde</h2>
         <p class="muted">Vos données restent sur ce téléphone. Faites une sauvegarde régulière pour ne rien perdre.</p>
         <div class="btn-col">
@@ -180,8 +221,8 @@
     <button data-view="depenses"><span>💸</span>Dépenses</button>
     <button data-view="credits"><span>⏳</span>Crédits</button>
     <button data-view="clients"><span>👥</span>Clients</button>
+    <button data-view="articles"><span>🛍️</span>Articles</button>
     <button data-view="bilan"><span>📊</span>Bilan</button>
-    <button data-view="profil"><span>⚙️</span>Profil</button>
   </nav>
 
   <!-- Formulaire vente -->
@@ -201,7 +242,12 @@
         <label>Nom du client<input name="client" list="clientsList" autocomplete="off"></label>
       </div>
       <p class="hint" id="clientHint" hidden></p>
-      <label>Produit<input name="produit" list="produitsList" required autocomplete="off"></label>
+      <div class="prod-row">
+        <label>Produit<input name="produit" list="produitsList" required autocomplete="off" placeholder="Article vendu"></label>
+        <button type="button" class="chip" id="btnPickArticle">🛍️ Articles</button>
+      </div>
+      <div class="quick-articles" id="quickArticles"></div>
+      <p class="hint new" id="prodHint" hidden></p>
       <div class="three-col">
         <label>Qté<input name="qte" type="number" min="0" step="any" inputmode="decimal" value="1" required></label>
         <label>Prix unitaire<input name="pu" type="number" min="0" step="any" inputmode="decimal" required></label>
@@ -269,6 +315,40 @@
     </div>
   </dialog>
 
+  <!-- Choisir un article -->
+  <dialog id="artPickDlg">
+    <div class="form">
+      <h3>Choisir un article</h3>
+      <input class="search" id="artPickSearch" type="search" placeholder="Rechercher un article">
+      <ul class="client-list" id="artPickList"></ul>
+      <p class="empty" id="artPickEmpty" hidden>Aucun article. Ajoutez vos articles dans l'onglet « Articles ».</p>
+      <div class="dlg-actions"><span class="grow"></span><button class="btn ghost" type="button" id="artPickClose">Fermer</button></div>
+    </div>
+  </dialog>
+
+  <!-- Fiche article -->
+  <dialog id="artDlg">
+    <form method="dialog" id="artForm" class="form">
+      <h3>Article</h3>
+      <label>Nom de l'article<input name="nom" required placeholder="Ex : Pagne wax 6 yards"></label>
+      <div class="two-col">
+        <label>Prix de vente<input name="prix" type="number" min="0" step="any" inputmode="decimal" required></label>
+        <label>Prix d'achat <small>(facultatif)</small><input name="achat" type="number" min="0" step="any" inputmode="decimal"></label>
+      </div>
+      <div class="two-col">
+        <label>Stock actuel <small>(facultatif)</small><input name="stock" type="number" step="any" inputmode="decimal" placeholder="Non suivi"></label>
+        <label>Catégorie <small>(facultatif)</small><input name="cat" list="catsList" autocomplete="off"></label>
+      </div>
+      <p class="muted" id="artInfo"></p>
+      <div class="dlg-actions">
+        <button class="btn danger" value="delete" id="artDel" type="submit" formnovalidate>Supprimer</button>
+        <span class="grow"></span>
+        <button class="btn ghost" value="cancel" formnovalidate>Annuler</button>
+        <button class="btn" value="save" type="submit">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Fiche client -->
   <dialog id="clientDlg">
     <div class="form">
@@ -285,8 +365,10 @@
   <datalist id="clientsList"></datalist>
   <datalist id="telsList"></datalist>
   <datalist id="produitsList"></datalist>
+  <datalist id="catsList"></datalist>
   <div class="toast" id="toast" role="status"></div>
 
+  <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

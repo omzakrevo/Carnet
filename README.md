@@ -9,7 +9,10 @@ La version numérique du carnet papier « Suivi des ventes » : une application 
 - **Dépenses** : achats de stock, transport, loyer, publicité… regroupés par mois.
 - **Crédits** : la liste des clients qui doivent encore de l'argent, avec un bouton pour les appeler et un bouton « Encaisser » (paiement en une ou plusieurs fois).
 - **Bilan du mois** : chiffre d'affaires, dépenses, bénéfice, montant encaissé, ventes par jour, meilleurs produits, répartition par mode de paiement.
-- **Profil** : nom de la marque, responsable, contacts, réseaux sociaux, devise (FCFA par défaut).
+- **Articles** : le catalogue de la boutique (prix de vente, prix d'achat, stock, catégorie). Dans une vente, on touche un article (raccourcis des plus vendus, liste ou saisie) et son prix s'ajoute automatiquement ; le stock baisse à chaque vente.
+- **Clients** : client ordinaire en un clic, client retrouvé par son numéro, liste des clients, client du mois, fiche avec l'historique des achats.
+- **Licence** : l'application s'active avec une clé ; les licences se gèrent depuis GitHub (voir [LICENCES.md](LICENCES.md)).
+- **Profil** (bouton ⚙️) : nom de la marque, responsable, contacts, réseaux sociaux, devise (FCFA par défaut).
 - **Export** vers Excel (CSV), **sauvegarde et restauration** (fichier JSON), **impression** de la page du jour.
 - Saisie rapide : l'application propose les clients et produits déjà enregistrés, et remplit d'elle-même le numéro du client et le dernier prix du produit.
 

@@ -208,6 +208,38 @@ dialog::backdrop { background: rgba(30, 20, 10, .45); }
 .history li { display: flex; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
 .history li .what { color: var(--ink-soft); font-size: 12px; }
 
+.brand > div { flex: 1; min-width: 0; }
+.icon-btn.gear { font-size: 20px; background: rgba(255,255,255,.6); }
+.prod-row { display: flex; gap: 8px; align-items: flex-end; }
+.prod-row label { flex: 1; }
+.prod-row .chip { min-height: 44px; flex: none; }
+.quick-articles { display: flex; gap: 6px; flex-wrap: wrap; margin-top: -2px; }
+.quick-articles:empty { display: none; }
+.quick-articles button {
+  border: 1px solid var(--line); background: var(--paper); color: var(--ink); border-radius: 16px;
+  padding: 6px 10px; font-size: 13px; cursor: pointer; min-height: 34px;
+}
+.quick-articles button b { color: var(--accent); font-weight: 600; }
+.stock-low { color: var(--warn); font-weight: 600; }
+.btn.wide { width: 100%; margin-top: 10px; }
+.form small { font-weight: 400; }
+
+body.locked main, body.locked .tabs, body.locked .fab, body.locked .lic-banner, body.locked .gear { display: none !important; }
+.lock { padding: 24px 16px; display: grid; place-items: center; min-height: 70vh; }
+.lock-card {
+  width: min(440px, 100%); background: var(--paper); border-radius: 18px; padding: 22px 18px;
+  border: 1px solid var(--line); box-shadow: var(--shadow); text-align: center;
+}
+.lock-card .form { text-align: left; margin-top: 12px; }
+.lock-card input[name=key] { text-transform: uppercase; letter-spacing: .05em; font-family: ui-monospace, monospace; }
+.lock-err { color: var(--warn); font-weight: 600; margin: 10px 0 0; }
+.lock-contact { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line); font-size: 14px; color: var(--ink-soft); }
+.lock-contact:empty { display: none; }
+.lock-contact .cd-contact { justify-content: center; margin: 10px 0 0; }
+.lic-banner {
+  background: #fff3cd; color: #6b4e00; text-align: center; font-size: 13px; padding: 8px 16px; font-weight: 600;
+}
+
 .bars { display: flex; align-items: flex-end; gap: 2px; height: 140px; border-bottom: 1px solid var(--line); }
 .bars .bar { flex: 1; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 1px; position: relative; }
 .bars .bar.zero { background: var(--line); }

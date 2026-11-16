@@ -7,7 +7,7 @@
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 
   // ---------- Stockage ----------
-  const blank = () => ({ profile: { devise: 'FCFA' }, ventes: [], depenses: [] });
+  const blank = () => ({ profile: { devise: 'FCFA' }, ventes: [], depenses: [], articles: [] });
   let db = load();
 
   function load() {
@@ -74,6 +74,26 @@
   };
   const initials = n => (String(n || '?').trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2) || '?').toUpperCase();
 
+  // ---------- Articles (catalogue de la boutique) ----------
+  const findArticle = nom => { const n = normName(nom); return n ? db.articles.find(a => normName(a.nom) === n) : null; };
+  const isOfArticle = (v, a) => v.articleId ? v.articleId === a.id : normName(v.produit) === normName(a.nom);
+  const soldQty = a => db.ventes.reduce((s, v) => s + (isOfArticle(v, a) ? num(v.qte) : 0), 0);
+  const tracked = a => a.stock !== '' && a.stock != null;
+  // Stock restant = stock enregistré - quantités vendues (null si le stock n'est pas suivi)
+  const stockLeft = a => tracked(a) ? num(a.stock) - soldQty(a) : null;
+  const byName = (a, b) => a.nom.localeCompare(b.nom, 'fr');
+  // Articles les plus vendus d'abord
+  function popularArticles() {
+    const count = {};
+    db.ventes.forEach(v => { const a = v.articleId ? db.articles.find(x => x.id === v.articleId) : findArticle(v.produit); if (a) count[a.id] = (count[a.id] || 0) + 1; });
+    return [...db.articles].sort((a, b) => (count[b.id] || 0) - (count[a.id] || 0) || byName(a, b));
+  }
+  function stockText(a) {
+    const s = stockLeft(a);
+    if (s === null) return 'Stock non suivi';
+    return s <= 0 ? '<span class="stock-low">Rupture de stock</span>' : `${s <= 3 ? '<span class="stock-low">' : '<span>'}Stock : ${nf.format(s)}</span>`;
+  }
+
   // ---------- État ----------
   let curDay = today();
   let curMonth = curDay.slice(0, 7);
@@ -84,11 +104,12 @@
     curView = view;
     $$('.view').forEach(v => (v.hidden = v.id !== `view-${view}`));
     $$('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
-    $('#fab').hidden = !['ventes', 'depenses'].includes(view);
+    $('#fab').hidden = !['ventes', 'depenses', 'articles'].includes(view);
     render();
     window.scrollTo(0, 0);
   }
   $$('.tabs button').forEach(b => b.addEventListener('click', () => show(b.dataset.view)));
+  $('#btnProfil').addEventListener('click', () => show('profil'));
 
   $$('[data-day]').forEach(b => b.addEventListener('click', () => {
     const d = parseIso(curDay); d.setDate(d.getDate() + Number(b.dataset.day));
@@ -108,6 +129,7 @@
     if (curView === 'depenses') renderDepenses();
     if (curView === 'credits') renderCredits();
     if (curView === 'clients') renderClients();
+    if (curView === 'articles') renderArticles();
     if (curView === 'bilan') renderBilan();
     if (curView === 'profil') renderProfil();
     $$('.monthLabel').forEach(el => (el.textContent = monthFmt.format(parseIso(curMonth + '-01'))));
@@ -116,7 +138,7 @@
   function renderHeader() {
     const p = db.profile;
     $('#brandName').textContent = p.marque || 'Carnet de gestion des ventes';
-    $('#brandSub').textContent = [p.responsable, p.contacts, p.reseaux].filter(Boolean).join(' · ') || 'Touchez « Profil » pour personnaliser';
+    $('#brandSub').textContent = [p.responsable, p.contacts, p.reseaux].filter(Boolean).join(' · ') || 'Touchez ⚙️ pour personnaliser';
     $('.brand-mark').textContent = (p.marque || 'C').trim().charAt(0).toUpperCase();
   }
 
@@ -321,9 +343,100 @@
     openVente(null, { client: c.name, tel: c.tel });
   });
 
+  // ---------- Vue Articles ----------
+  function articleItem(a, withMonth) {
+    const mois = withMonth ? db.ventes.filter(v => v.date.startsWith(curMonth) && isOfArticle(v, a)).reduce((s, v) => s + num(v.qte), 0) : 0;
+    return `<li data-art="${a.id}">
+      <span class="avatar">${esc(initials(a.nom))}</span>
+      <div class="info">
+        <div class="who">${esc(a.nom)}</div>
+        <div class="what">${stockText(a)}${a.cat ? ` · ${esc(a.cat)}` : ''}${withMonth && mois ? ` · ${nf.format(mois)} vendu${mois > 1 ? 's' : ''} ce mois` : ''}</div>
+      </div>
+      <div class="side"><b>${money(num(a.prix))}</b>${a.achat !== '' && a.achat != null ? `achat ${money(num(a.achat))}` : ''}</div>
+    </li>`;
+  }
+  function renderArticles() {
+    const q = normName($('#aSearch').value);
+    const list = [...db.articles].sort(byName).filter(a => !q || normName(a.nom).includes(q) || normName(a.cat).includes(q));
+    $('#articleList').innerHTML = list.map(a => articleItem(a, true)).join('');
+    $('#articleEmpty').hidden = list.length > 0;
+    $('#articleEmpty').innerHTML = db.articles.length ? 'Aucun article ne correspond.' : 'Aucun article. Touchez <b>+</b> pour ajouter les articles de votre boutique.';
+    $('#aNb').textContent = db.articles.length;
+    $('#aOut').textContent = db.articles.filter(a => tracked(a) && stockLeft(a) <= 0).length;
+    $('#aVal').textContent = money(db.articles.reduce((s, a) => s + (tracked(a) ? Math.max(0, stockLeft(a)) * num(a.prix) : 0), 0));
+    const sold = [...new Set(db.ventes.map(v => v.produit.trim()).filter(p => p && !findArticle(p)))];
+    $('#importArticles').hidden = !sold.length;
+    $('#importArticles').textContent = `Créer ${sold.length} article${sold.length > 1 ? 's' : ''} à partir de mes ventes`;
+  }
+  $('#aSearch').addEventListener('input', renderArticles);
+  $('#articleList').addEventListener('click', e => { const li = e.target.closest('li[data-art]'); if (li) openArticle(li.dataset.art); });
+  $('#importArticles').addEventListener('click', () => {
+    const latest = {};
+    [...db.ventes].sort((a, b) => (a.date + (a.heure || '')).localeCompare(b.date + (b.heure || ''))).forEach(v => { if (v.produit.trim()) latest[normName(v.produit)] = v; });
+    let n = 0;
+    Object.values(latest).forEach(v => { if (!findArticle(v.produit)) { db.articles.push({ id: uid(), nom: v.produit.trim(), prix: num(v.pu), achat: '', stock: '', cat: '' }); n++; } });
+    save(); render(); toast(`${n} article${n > 1 ? 's' : ''} créé${n > 1 ? 's' : ''}`);
+  });
+
+  const aDlg = $('#artDlg'), aForm = $('#artForm');
+  let editArt = null;
+  function openArticle(id) {
+    editArt = id ? db.articles.find(a => a.id === id) : null;
+    const a = editArt || { nom: '', prix: '', achat: '', stock: '', cat: '' };
+    const f = aForm.elements;
+    $('#catsList').innerHTML = [...new Set(db.articles.map(x => x.cat).filter(Boolean))].map(c => `<option value="${esc(c)}">`).join('');
+    f.nom.value = a.nom; f.prix.value = a.prix; f.achat.value = a.achat ?? '';
+    f.stock.value = tracked(a) && editArt ? stockLeft(a) : (editArt ? '' : a.stock); f.cat.value = a.cat || '';
+    $('#artDel').hidden = !editArt;
+    $('#artInfo').textContent = editArt ? `${nf.format(soldQty(a))} vendu(s) au total. Pour réapprovisionner, augmentez le stock actuel.` : 'Le prix sera mis automatiquement dans la vente quand vous choisirez cet article.';
+    aDlg.showModal();
+  }
+  aDlg.addEventListener('close', () => {
+    const action = aDlg.returnValue; aDlg.returnValue = '';
+    if (action === 'delete' && editArt) {
+      if (!confirm(`Supprimer l'article « ${editArt.nom} » ? Les ventes déjà enregistrées sont conservées.`)) return;
+      db.articles = db.articles.filter(a => a !== editArt);
+      save(); render(); toast('Article supprimé'); return;
+    }
+    if (action !== 'save') return;
+    const f = aForm.elements;
+    const nom = f.nom.value.trim();
+    const other = findArticle(nom);
+    if (other && other !== editArt) { toast('Un article porte déjà ce nom'); return; }
+    const data = { nom, prix: num(f.prix.value), achat: f.achat.value === '' ? '' : num(f.achat.value), cat: f.cat.value.trim() };
+    const target = editArt || { id: uid() };
+    Object.assign(target, data);
+    // On saisit le stock actuel : on mémorise stock actuel + quantités déjà vendues
+    target.stock = f.stock.value === '' ? '' : num(f.stock.value) + soldQty(target);
+    if (!editArt) db.articles.push(target);
+    save(); render(); toast(editArt ? 'Article modifié' : 'Article ajouté ✔');
+  });
+
+  // Sélection d'un article dans la vente
+  const apDlg = $('#artPickDlg');
+  function renderArtPick() {
+    const q = normName($('#artPickSearch').value);
+    const list = popularArticles().filter(a => !q || normName(a.nom).includes(q) || normName(a.cat).includes(q));
+    $('#artPickList').innerHTML = list.map(a => articleItem(a, false)).join('');
+    $('#artPickEmpty').hidden = list.length > 0;
+    $('#artPickEmpty').textContent = db.articles.length ? 'Aucun article ne correspond.' : "Aucun article. Ajoutez vos articles dans l'onglet « Articles ».";
+  }
+  $('#btnPickArticle').addEventListener('click', () => { $('#artPickSearch').value = ''; renderArtPick(); apDlg.showModal(); $('#artPickSearch').focus(); });
+  $('#artPickSearch').addEventListener('input', renderArtPick);
+  $('#artPickClose').addEventListener('click', () => apDlg.close());
+  $('#artPickList').addEventListener('click', e => {
+    const li = e.target.closest('li[data-art]'); if (!li) return;
+    apDlg.close(); selectArticle(db.articles.find(a => a.id === li.dataset.art));
+  });
+
   function renderProfil() {
     const f = $('#profilForm');
     ['marque', 'responsable', 'contacts', 'reseaux', 'devise'].forEach(k => (f.elements[k].value = db.profile[k] || ''));
+    $('#licInfo').innerHTML = lic
+      ? `Boutique : <b>${esc(lic.boutique || '—')}</b><br>Clé : ${esc(maskKey(lic.key))}<br>
+         Valable ${lic.expire ? `jusqu'au <b>${dayFmt.format(parseIso(lic.expire))}</b>` : '<b>sans limite de durée</b>'}<br>
+         Dernière vérification : ${lic.lastCheck ? new Date(lic.lastCheck).toLocaleString('fr-FR') : '—'}`
+      : 'Aucune licence active.';
   }
   $('#profilForm').addEventListener('submit', e => {
     e.preventDefault();
@@ -342,8 +455,33 @@
     const cl = buildClients();
     $('#clientsList').innerHTML = uniq(cl.map(c => c.name)).map(c => `<option value="${esc(c)}">`).join('');
     $('#telsList').innerHTML = cl.filter(c => c.tel).map(c => `<option value="${esc(c.tel)}">${esc(c.name)}</option>`).join('');
-    $('#produitsList').innerHTML = uniq(db.ventes.map(v => v.produit)).map(c => `<option value="${esc(c)}">`).join('');
+    const arts = [...db.articles].sort(byName);
+    const others = uniq(db.ventes.map(v => v.produit)).filter(p => !findArticle(p));
+    $('#produitsList').innerHTML = arts.map(a => `<option value="${esc(a.nom)}">${esc(money(num(a.prix)))}</option>`).join('')
+      + others.map(c => `<option value="${esc(c)}">`).join('');
+    // Raccourcis : les 6 articles les plus vendus
+    $('#quickArticles').innerHTML = popularArticles().slice(0, 6)
+      .map(a => `<button type="button" data-art="${a.id}">${esc(a.nom)} <b>${esc(nf.format(num(a.prix)))}</b></button>`).join('');
   }
+
+  function prodHint(a) {
+    const h = $('#prodHint');
+    if (!a) { h.hidden = true; return; }
+    const s = stockLeft(a);
+    h.hidden = false;
+    h.innerHTML = `Article : ${esc(a.nom)} · ${money(num(a.prix))}${s === null ? '' : ` · ${s <= 0 ? '<span class="stock-low">rupture de stock</span>' : `stock restant ${nf.format(s)}`}`}`;
+  }
+  // Choisir un article remplit le produit et le prix
+  function selectArticle(a) {
+    if (!a) return;
+    const f = vForm.elements;
+    f.produit.value = a.nom; f.pu.value = a.prix; f.pu.dataset.auto = '1';
+    updateTotal(); prodHint(a);
+    f.qte.focus();
+  }
+  $('#quickArticles').addEventListener('click', e => {
+    const b = e.target.closest('[data-art]'); if (b) selectArticle(db.articles.find(a => a.id === b.dataset.art));
+  });
 
   // Message sous les champs client
   function setHint(text, isNew) {
@@ -417,12 +555,18 @@
     const c = buildClients().find(x => normName(x.name) === n);
     if (c) { if (!vForm.elements.tel.value) vForm.elements.tel.value = c.tel; hintFor(c); }
   });
-  // Produit reconnu : propose le dernier prix (sans écraser un prix déjà saisi)
+  // Produit reconnu : article du catalogue -> son prix ; sinon le dernier prix pratiqué
   vForm.elements.produit.addEventListener('input', () => {
-    const p = normName(vForm.elements.produit.value);
+    const f = vForm.elements;
+    const a = findArticle(f.produit.value);
+    if (a) { f.pu.value = a.prix; f.pu.dataset.auto = '1'; updateTotal(); prodHint(a); return; }
+    prodHint(null);
+    if (f.pu.dataset.auto === '1') { f.pu.value = ''; f.pu.dataset.auto = ''; updateTotal(); }
+    const p = normName(f.produit.value);
     const last = p && [...db.ventes].reverse().find(v => normName(v.produit) === p);
-    if (last && !vForm.elements.pu.value) { vForm.elements.pu.value = last.pu; updateTotal(); }
+    if (last && !f.pu.value) { f.pu.value = last.pu; f.pu.dataset.auto = '1'; updateTotal(); }
   });
+  vForm.elements.pu.addEventListener('input', () => { vForm.elements.pu.dataset.auto = ''; });
   // Toucher un champ chiffré sélectionne son contenu : on tape pour remplacer
   ['qte', 'pu', 'avance'].forEach(n => vForm.elements[n].addEventListener('focus', e => e.target.select()));
 
@@ -430,6 +574,7 @@
     fillDatalists();
     setHint('');
     vForm.elements.client.dataset.auto = '';
+    vForm.elements.pu.dataset.auto = '';
     editVente = id ? db.ventes.find(v => v.id === id) : null;
     const v = editVente || {
       date: curDay, heure: curDay === today() ? `${pad(new Date().getHours())}:${pad(new Date().getMinutes())}` : '',
@@ -442,6 +587,7 @@
     f.avance.value = v.paiement === 'Crédit' ? (v.paye || 0) : 0; f.obs.value = v.obs || '';
     $('#venteDel').hidden = !editVente;
     updateTotal();
+    prodHint(editVente ? (editVente.articleId ? db.articles.find(a => a.id === editVente.articleId) : findArticle(editVente.produit)) : null);
     vDlg.showModal();
     if (preset && preset.client) { const c = buildClients().find(x => normName(x.name) === normName(preset.client)); if (c) hintFor(c); f.produit.focus(); }
     else if (!editVente) f.tel.focus();
@@ -462,6 +608,12 @@
       paiement: f.paiement.value, remise: f.remise.value, obs: f.obs.value.trim()
     };
     data.paye = data.paiement === 'Crédit' ? num(f.avance.value) : total(data);
+    const art = findArticle(data.produit);
+    data.articleId = art ? art.id : '';
+    if (art && tracked(art)) {
+      const dispo = stockLeft(art) + (editVente && isOfArticle(editVente, art) ? num(editVente.qte) : 0);
+      if (data.qte > dispo) setTimeout(() => toast(`Attention : stock de « ${art.nom} » insuffisant (${nf.format(dispo)})`), 2300);
+    }
     if (editVente) Object.assign(editVente, data);
     else db.ventes.push({ id: uid(), createdAt: Date.now(), ...data });
     curDay = data.date;
@@ -495,7 +647,7 @@
     save(); render(); toast(editDep ? 'Dépense modifiée' : 'Dépense ajoutée ✔');
   });
 
-  $('#fab').addEventListener('click', () => (curView === 'depenses' ? openDep() : openVente()));
+  $('#fab').addEventListener('click', () => (curView === 'depenses' ? openDep() : curView === 'articles' ? openArticle() : openVente()));
 
   // ---------- Export / sauvegarde ----------
   function download(name, content, type) {
@@ -518,7 +670,7 @@
     try {
       const d = JSON.parse(await file.text());
       if (!Array.isArray(d.ventes) || !Array.isArray(d.depenses)) throw new Error();
-      if (!confirm(`Remplacer les données actuelles par cette sauvegarde (${d.ventes.length} ventes, ${d.depenses.length} dépenses) ?`)) return;
+      if (!confirm(`Remplacer les données actuelles par cette sauvegarde (${d.ventes.length} ventes, ${d.depenses.length} dépenses, ${(d.articles || []).length} articles) ?`)) return;
       db = { ...blank(), ...d, profile: { ...blank().profile, ...(d.profile || {}) } };
       save(); render(); toast('Sauvegarde restaurée');
     } catch { toast('Fichier de sauvegarde invalide'); }
@@ -542,5 +694,129 @@
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 
-  show('ventes');
+  // ---------- Licence ----------
+  // Les licences sont dans un fichier licences.json sur GitHub (voir config.js).
+  // Chaque licence y est enregistrée par l'empreinte SHA-256 de sa clé : la clé elle-même n'est jamais publiée.
+  const CFG = Object.assign({ licenceUrl: '', horsLigneMaxJours: 30, alerteJours: 7, verifHeures: 6 }, window.CARNET_CONFIG || {});
+  const LIC_KEY = 'carnet-licence-v1', VENDOR_KEY = 'carnet-vendeur-v1';
+  const readJSON = k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
+  const writeJSON = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+  let lic = readJSON(LIC_KEY);
+  const normKey = k => String(k || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const maskKey = k => { const n = normKey(k); return n.length > 8 ? `${n.slice(0, 6)}-••••-${n.slice(-4)}` : '••••'; };
+  async function sha256(s) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+    return [...new Uint8Array(buf)].map(x => x.toString(16).padStart(2, '0')).join('');
+  }
+  async function fetchLicences() {
+    if (!CFG.licenceUrl) throw new Error('config');
+    const r = await fetch(CFG.licenceUrl + (CFG.licenceUrl.includes('?') ? '&' : '?') + 't=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) throw new Error('http ' + r.status);
+    const data = await r.json();
+    if (data.vendeur) writeJSON(VENDOR_KEY, data.vendeur);
+    return data;
+  }
+  const statusOf = e => !e ? 'inconnue' : e.actif === false ? 'suspendue' : (e.expire && e.expire < today()) ? 'expiree' : 'ok';
+  const lockMessages = {
+    inconnue: "Cette clé de licence n'est pas reconnue.",
+    suspendue: 'Cette licence a été suspendue.',
+    expiree: 'Votre licence a expiré. Contactez-nous pour la renouveler.',
+    horsligne: 'Connectez-vous à internet pour vérifier votre licence.',
+    reseau: "Pas de connexion internet : l'activation nécessite internet.",
+  };
+
+  function renderVendor() {
+    const v = readJSON(VENDOR_KEY) || {};
+    const tel = String(v.telephone || '').replace(/[^\d+]/g, '');
+    const wa = String(v.whatsapp || v.telephone || '').replace(/\D/g, '');
+    $('#lockContact').innerHTML = (v.nom || tel || v.message) ? `
+      ${esc(v.message || 'Pour obtenir ou renouveler une licence, contactez :')}
+      ${v.nom ? `<div><b>${esc(v.nom)}</b></div>` : ''}
+      ${tel ? `<div class="cd-contact"><a class="btn small ghost" href="tel:${esc(tel)}">📞 ${esc(v.telephone)}</a>
+        ${wa ? `<a class="btn small ghost" href="https://wa.me/${esc(wa)}?text=${encodeURIComponent('Bonjour, je souhaite une licence pour le Carnet de gestion des ventes.')}" target="_blank" rel="noopener">💬 WhatsApp</a>` : ''}</div>` : ''}` : '';
+  }
+  function lock(msg, err) {
+    document.body.classList.add('locked');
+    $('#lock').hidden = false;
+    $('#lockMsg').textContent = msg || "Entrez votre clé de licence pour activer l'application.";
+    $('#lockErr').hidden = !err; $('#lockErr').textContent = err || '';
+    if (lic && lic.key) $('#lockForm').elements.key.value = lic.key;
+    $('#lockBtn').textContent = lic ? 'Réessayer' : 'Activer';
+    renderVendor();
+    [vDlg, dDlg, aDlg, apDlg, pDlg, cDlg].forEach(d => d.open && d.close());
+  }
+  let started = false;
+  function unlock() {
+    document.body.classList.remove('locked');
+    $('#lock').hidden = true;
+    const b = $('#licBanner');
+    const left = lic && lic.expire ? Math.ceil((parseIso(lic.expire) - parseIso(today())) / 864e5) : null;
+    b.hidden = !(left !== null && left <= CFG.alerteJours);
+    if (!b.hidden) b.textContent = left <= 0 ? "Votre licence expire aujourd'hui." : `Votre licence expire dans ${left} jour${left > 1 ? 's' : ''} (le ${dayFmt.format(parseIso(lic.expire))}).`;
+    if (!started) { started = true; show('ventes'); } else render();
+  }
+  // Vérification en ligne de la licence enregistrée
+  async function verifyOnline() {
+    if (!lic) return;
+    try {
+      const data = await fetchLicences();
+      const e = (data.licences || []).find(x => x.hash === lic.hash);
+      const st = statusOf(e);
+      if (st === 'ok') {
+        lic = { ...lic, expire: e.expire || '', boutique: e.boutique || lic.boutique, lastCheck: Date.now() };
+        writeJSON(LIC_KEY, lic); unlock();
+      } else lock(lockMessages[st]);
+      return st;
+    } catch { return 'reseau'; }
+  }
+  async function bootLicence() {
+    if (!lic) return lock();
+    // Décision immédiate avec la dernière vérification connue (fonctionne hors connexion)
+    const days = (Date.now() - (lic.lastCheck || 0)) / 864e5;
+    if (lic.expire && lic.expire < today()) lock(lockMessages.expiree);
+    else if (days > CFG.horsLigneMaxJours) lock(lockMessages.horsligne);
+    else unlock();
+    verifyOnline();
+  }
+  $('#lockForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const key = normKey(e.target.elements.key.value);
+    const btn = $('#lockBtn'); btn.disabled = true; btn.textContent = 'Vérification…';
+    $('#lockErr').hidden = true;
+    try {
+      const hash = await sha256(key);
+      let data;
+      try { data = await fetchLicences(); } catch (err) {
+        lock($('#lockMsg').textContent, /^(http|config)/.test(err.message) ? 'Le service de licences est momentanément indisponible. Réessayez plus tard.' : lockMessages.reseau);
+        return;
+      }
+      const entry = (data.licences || []).find(x => x.hash === hash);
+      const st = statusOf(entry);
+      if (st !== 'ok') { lock($('#lockMsg').textContent, lockMessages[st]); return; }
+      const first = !lic;
+      lic = { key: e.target.elements.key.value.trim().toUpperCase(), hash, boutique: entry.boutique || '', telephone: entry.telephone || '', expire: entry.expire || '', lastCheck: Date.now() };
+      writeJSON(LIC_KEY, lic);
+      // Pré-remplit le profil avec les informations de la boutique
+      if (!db.profile.marque && entry.boutique) db.profile.marque = entry.boutique;
+      if (!db.profile.contacts && entry.telephone) db.profile.contacts = entry.telephone;
+      save();
+      unlock();
+      toast(first ? `Licence activée : bienvenue ${entry.boutique || ''} !` : 'Licence vérifiée ✔');
+    } finally { btn.disabled = false; btn.textContent = lic ? 'Réessayer' : 'Activer'; }
+  });
+  $('#licCheck').addEventListener('click', async () => {
+    const st = await verifyOnline();
+    if (st === 'ok') { renderProfil(); toast('Licence valide ✔'); }
+    else if (st === 'reseau') toast('Pas de connexion internet');
+  });
+  $('#licChange').addEventListener('click', () => {
+    if (!confirm('Saisir une autre clé de licence ? Vos données ne seront pas effacées.')) return;
+    lic = null; writeJSON(LIC_KEY, null); $('#lockForm').elements.key.value = ''; lock();
+  });
+  // Revérifie quand on revient sur l'application
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && lic && Date.now() - (lic.lastCheck || 0) > CFG.verifHeures * 36e5) verifyOnline();
+  });
+
+  bootLicence();
 })();

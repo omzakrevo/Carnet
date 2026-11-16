@@ -1,0 +1,28 @@
+{
+  "vendeur": {
+    "nom": "Carnet de gestion des ventes",
+    "telephone": "",
+    "whatsapp": "",
+    "message": "Pour obtenir ou renouveler votre licence, contactez-nous :"
+  },
+  "licences": [
+    {
+      "id": "L0001",
+      "boutique": "Licence du propriétaire",
+      "telephone": "",
+      "hash": "5e28afe848e608e8d023c278333a64c8e8cf24fffc150e5040c1cd85cebdfd87",
+      "expire": "",
+      "actif": true,
+      "note": "Licence sans limite de durée pour le propriétaire de l'application"
+    },
+    {
+      "id": "L0002",
+      "boutique": "Boutique de démonstration",
+      "telephone": "",
+      "hash": "ed1d8addae37a1ac4f01492ff7a4da6015d4a5d7e7605f9f2622ca4eebe64f08",
+      "expire": "2026-12-16",
+      "actif": true,
+      "note": "Licence d'essai d'un mois (vous pouvez la supprimer)"
+    }
+  ]
+}
