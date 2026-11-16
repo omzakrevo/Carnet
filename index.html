@@ -177,12 +177,17 @@
     <section class="view" id="view-articles" hidden>
       <div class="stats">
         <div class="stat"><span>Articles</span><strong id="aNb">0</strong></div>
-        <div class="stat warn"><span>En rupture</span><strong id="aOut">0</strong></div>
+        <div class="stat warn"><span>Stock bas ou épuisé</span><strong id="aOut">0</strong></div>
         <div class="stat accent"><span>Valeur du stock</span><strong id="aVal">0</strong></div>
       </div>
       <div class="sheet">
         <h2 class="script">Mes articles</h2>
         <input class="search" id="aSearch" type="search" placeholder="Rechercher un article">
+        <div class="filters" id="aFilters">
+          <button type="button" data-f="tous" class="active">Tous</button>
+          <button type="button" data-f="bas">Stock bas</button>
+          <button type="button" data-f="rupture">Rupture</button>
+        </div>
         <ul class="client-list" id="articleList"></ul>
         <p class="empty" id="articleEmpty">Aucun article. Touchez <b>+</b> pour ajouter les articles de votre boutique.</p>
         <button class="btn ghost wide" id="importArticles" hidden>Créer les articles à partir de mes ventes</button>
@@ -424,6 +429,28 @@
     </div>
   </dialog>
 
+  <!-- Suivi du stock d'un article -->
+  <dialog id="artViewDlg">
+    <div class="form">
+      <h3 id="avName"></h3>
+      <div class="stock-big" id="avStock"></div>
+      <div class="cd-stats" id="avStats"></div>
+      <div class="restock">
+        <label>Quantité reçue<input id="avQte" type="number" min="0" step="any" inputmode="decimal" placeholder="Ex : 10"></label>
+        <button class="btn" type="button" id="avAdd">+ Ajouter au stock</button>
+      </div>
+      <label class="check" id="avDepRow"><input type="checkbox" id="avDep"> <span id="avDepLabel">Enregistrer l'achat dans les dépenses</span></label>
+      <button class="btn ghost" type="button" id="avInv">Corriger le stock (inventaire)</button>
+      <h4 class="mv-title">Mouvements du stock</h4>
+      <ul class="history" id="avHist"></ul>
+      <div class="dlg-actions">
+        <button class="btn ghost" type="button" id="avClose">Fermer</button>
+        <span class="grow"></span>
+        <button class="btn ghost" type="button" id="avEdit">Modifier l'article</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- Fiche article -->
   <dialog id="artDlg">
     <form method="dialog" id="artForm" class="form">
@@ -434,9 +461,11 @@
         <label>Prix d'achat <small>(facultatif)</small><input name="achat" type="number" min="0" step="any" inputmode="decimal"></label>
       </div>
       <div class="two-col">
-        <label>Stock actuel <small>(facultatif)</small><input name="stock" type="number" step="any" inputmode="decimal" placeholder="Non suivi"></label>
-        <label>Catégorie <small>(facultatif)</small><input name="cat" list="catsList" autocomplete="off"></label>
+        <label><span id="artStockLabel">Quantité en stock</span><input name="stock" type="number" min="0" step="any" inputmode="decimal" placeholder="Ex : 20"></label>
+        <label>Alerte stock bas à<input name="alerte" type="number" min="0" step="any" inputmode="decimal" placeholder="3"></label>
       </div>
+      <label>Catégorie <small>(facultatif)</small><input name="cat" list="catsList" autocomplete="off"></label>
+      <p class="muted" style="margin:0;font-size:13px">Laissez la quantité vide si vous ne voulez pas suivre le stock de cet article.</p>
       <p class="muted" id="artInfo"></p>
       <div class="dlg-actions">
         <button class="btn danger" value="delete" id="artDel" type="submit" formnovalidate>Supprimer</button>

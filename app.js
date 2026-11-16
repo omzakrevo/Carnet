@@ -88,10 +88,22 @@
     db.ventes.forEach(v => { const a = v.articleId ? db.articles.find(x => x.id === v.articleId) : findArticle(v.produit); if (a) count[a.id] = (count[a.id] || 0) + 1; });
     return [...db.articles].sort((a, b) => (count[b.id] || 0) - (count[a.id] || 0) || byName(a, b));
   }
-  function stockText(a) {
+  // Seuil d'alerte de stock bas (3 par défaut)
+  const seuil = a => (a.alerte === '' || a.alerte == null) ? 3 : num(a.alerte);
+  // État du stock : none (non suivi), out (épuisé), low (bas), ok
+  function stockState(a) {
     const s = stockLeft(a);
-    if (s === null) return 'Stock non suivi';
-    return s <= 0 ? '<span class="stock-low">Rupture de stock</span>' : `${s <= 3 ? '<span class="stock-low">' : '<span>'}Stock : ${nf.format(s)}</span>`;
+    return s === null ? 'none' : s <= 0 ? 'out' : s <= seuil(a) ? 'low' : 'ok';
+  }
+  function stockText(a) {
+    const s = stockLeft(a), st = stockState(a);
+    if (st === 'none') return 'Stock non suivi';
+    return st === 'out' ? '<span class="stock-low">Rupture de stock</span>' : `${st === 'low' ? '<span class="stock-low">Stock bas : ' : '<span>Stock : '}${nf.format(s)}</span>`;
+  }
+  function stockBadge(a) {
+    const s = stockLeft(a), st = stockState(a);
+    const txt = st === 'none' ? 'non suivi' : st === 'out' ? 'Épuisé' : `Reste ${nf.format(s)}`;
+    return `<span class="stock-badge ${st}">${txt}</span>`;
   }
 
   // ---------- État ----------
@@ -352,24 +364,98 @@
         <div class="who">${esc(a.nom)}</div>
         <div class="what">${stockText(a)}${a.cat ? ` · ${esc(a.cat)}` : ''}${withMonth && mois ? ` · ${nf.format(mois)} vendu${mois > 1 ? 's' : ''} ce mois` : ''}</div>
       </div>
-      <div class="side"><b>${money(num(a.prix))}</b>${a.achat !== '' && a.achat != null ? `achat ${money(num(a.achat))}` : ''}</div>
+      <div class="side"><b>${money(num(a.prix))}</b>${stockBadge(a)}</div>
     </li>`;
   }
+  let artFilter = 'tous';
   function renderArticles() {
     const q = normName($('#aSearch').value);
-    const list = [...db.articles].sort(byName).filter(a => !q || normName(a.nom).includes(q) || normName(a.cat).includes(q));
+    const nBas = db.articles.filter(a => stockState(a) === 'low').length, nOut = db.articles.filter(a => stockState(a) === 'out').length;
+    $$('#aFilters button').forEach(b => {
+      b.classList.toggle('active', b.dataset.f === artFilter);
+      b.textContent = { tous: `Tous (${db.articles.length})`, bas: `Stock bas (${nBas})`, rupture: `Rupture (${nOut})` }[b.dataset.f];
+    });
+    const list = [...db.articles].sort(byName)
+      .filter(a => !q || normName(a.nom).includes(q) || normName(a.cat).includes(q))
+      .filter(a => artFilter === 'tous' || (artFilter === 'bas' ? stockState(a) === 'low' : stockState(a) === 'out'));
     $('#articleList').innerHTML = list.map(a => articleItem(a, true)).join('');
     $('#articleEmpty').hidden = list.length > 0;
     $('#articleEmpty').innerHTML = db.articles.length ? 'Aucun article ne correspond.' : 'Aucun article. Touchez <b>+</b> pour ajouter les articles de votre boutique.';
     $('#aNb').textContent = db.articles.length;
-    $('#aOut').textContent = db.articles.filter(a => tracked(a) && stockLeft(a) <= 0).length;
+    $('#aOut').textContent = nBas + nOut;
     $('#aVal').textContent = money(db.articles.reduce((s, a) => s + (tracked(a) ? Math.max(0, stockLeft(a)) * num(a.prix) : 0), 0));
     const sold = [...new Set(db.ventes.map(v => v.produit.trim()).filter(p => p && !findArticle(p)))];
     $('#importArticles').hidden = !sold.length;
     $('#importArticles').textContent = `Créer ${sold.length} article${sold.length > 1 ? 's' : ''} à partir de mes ventes`;
   }
   $('#aSearch').addEventListener('input', renderArticles);
-  $('#articleList').addEventListener('click', e => { const li = e.target.closest('li[data-art]'); if (li) openArticle(li.dataset.art); });
+  $('#articleList').addEventListener('click', e => { const li = e.target.closest('li[data-art]'); if (li) openArtView(li.dataset.art); });
+  $$('#aFilters button').forEach(b => b.addEventListener('click', () => { artFilter = b.dataset.f; renderArticles(); }));
+
+  // ---------- Suivi du stock d'un article ----------
+  const avDlg = $('#artViewDlg');
+  let viewArt = null;
+  const mv = (a, m) => { a.mouvements = [...(a.mouvements || []), { date: today(), at: Date.now(), ...m }]; };
+  function renderArtView() {
+    const a = viewArt; if (!a) return;
+    const s = stockLeft(a), st = stockState(a);
+    $('#avName').textContent = a.nom;
+    const box = $('#avStock'); box.className = 'stock-big ' + st;
+    box.innerHTML = st === 'none'
+      ? `<b>Stock non suivi</b><span>Indiquez la quantité reçue ci-dessous pour commencer à suivre le stock.</span>`
+      : `<b>${nf.format(Math.max(0, s))}</b><span>${st === 'out' ? 'épuisé : pensez à réapprovisionner' : st === 'low' ? `en stock : stock bas (alerte à ${nf.format(seuil(a))})` : 'en stock'}</span>`;
+    const recu = (a.mouvements || []).filter(m => m.type === 'entree').reduce((t, m) => t + num(m.qte), 0);
+    const moisQ = db.ventes.filter(v => v.date.startsWith(today().slice(0, 7)) && isOfArticle(v, a)).reduce((t, v) => t + num(v.qte), 0);
+    $('#avStats').innerHTML = `
+      <div class="stat"><span>Prix de vente</span><strong>${money(num(a.prix))}</strong></div>
+      <div class="stat"><span>Vendus au total</span><strong>${nf.format(soldQty(a))}</strong></div>
+      <div class="stat"><span>Vendus ce mois</span><strong>${nf.format(moisQ)}</strong></div>
+      <div class="stat accent"><span>Valeur en stock</span><strong>${money(Math.max(0, s || 0) * num(a.prix))}</strong></div>`;
+    const hasAchat = a.achat !== '' && a.achat != null && num(a.achat) > 0;
+    $('#avDepRow').hidden = !hasAchat;
+    const q = num($('#avQte').value);
+    $('#avDepLabel').textContent = `Enregistrer l'achat dans les dépenses${q > 0 && hasAchat ? ` (${money(q * num(a.achat))})` : ''}`;
+    $('#avInv').hidden = st === 'none';
+    // Historique : entrées, inventaires et ventes
+    const items = [
+      ...(a.mouvements || []).map(m => ({ k: m.date + (m.at || ''), date: m.date,
+        html: m.type === 'entree' ? `<span class="plus">+${nf.format(num(m.qte))}</span> ${esc(m.note || 'Réapprovisionnement')}`
+          : `<b>= ${nf.format(num(m.qte))}</b> Inventaire${m.ecart ? ` (écart ${m.ecart > 0 ? '+' : ''}${nf.format(m.ecart)})` : ''}` })),
+      ...db.ventes.filter(v => isOfArticle(v, a)).map(v => ({ k: v.date + (v.createdAt || ''), date: v.date,
+        html: `<span class="minus">−${nf.format(num(v.qte))}</span> Vente${v.client ? ` · ${esc(v.client)}` : ''}` })),
+    ].sort((x, y) => String(y.k).localeCompare(String(x.k))).slice(0, 40);
+    $('#avHist').innerHTML = items.length ? items.map(i => `<li><div>${i.html}</div><span class="muted">${shortFmt.format(parseIso(i.date))}</span></li>`).join('')
+      : '<li class="muted">Aucun mouvement pour l\'instant.</li>';
+  }
+  function openArtView(id) {
+    viewArt = db.articles.find(a => a.id === id); if (!viewArt) return;
+    $('#avQte').value = ''; $('#avDep').checked = false;
+    renderArtView(); avDlg.showModal();
+  }
+  $('#avQte').addEventListener('input', renderArtView);
+  $('#avAdd').addEventListener('click', () => {
+    const a = viewArt, q = num($('#avQte').value);
+    if (!(q > 0)) { toast('Indiquez la quantité reçue'); $('#avQte').focus(); return; }
+    // Si le stock n'était pas suivi, on part de zéro
+    a.stock = (tracked(a) ? num(a.stock) : soldQty(a)) + q;
+    mv(a, { type: 'entree', qte: q, note: 'Réapprovisionnement' });
+    if ($('#avDep').checked && !$('#avDepRow').hidden) {
+      db.depenses.push({ id: uid(), date: today(), libelle: `Achat de stock : ${a.nom} (× ${nf.format(q)})`, categorie: 'Achat de stock', montant: q * num(a.achat), paiement: 'Espèces' });
+    }
+    save(); $('#avQte').value = ''; $('#avDep').checked = false; renderArtView(); render();
+    toast(`+${nf.format(q)} ${a.nom} : reste ${nf.format(stockLeft(a))}`);
+  });
+  $('#avInv').addEventListener('click', () => {
+    const a = viewArt, avant = stockLeft(a);
+    const ans = prompt(`Combien de « ${a.nom} » avez-vous réellement en boutique ?`, String(Math.max(0, avant)));
+    if (ans === null || ans.trim() === '') return;
+    const n = Math.max(0, num(ans));
+    a.stock = n + soldQty(a);
+    mv(a, { type: 'inventaire', qte: n, ecart: n - avant });
+    save(); renderArtView(); render(); toast(`Stock corrigé : ${nf.format(n)}`);
+  });
+  $('#avClose').addEventListener('click', () => avDlg.close());
+  $('#avEdit').addEventListener('click', () => { const id = viewArt.id; avDlg.close(); openArticle(id); });
   $('#importArticles').addEventListener('click', () => {
     const latest = {};
     [...db.ventes].sort((a, b) => (a.date + (a.heure || '')).localeCompare(b.date + (b.heure || ''))).forEach(v => { if (v.produit.trim()) latest[normName(v.produit)] = v; });
@@ -387,8 +473,10 @@
     $('#catsList').innerHTML = [...new Set(db.articles.map(x => x.cat).filter(Boolean))].map(c => `<option value="${esc(c)}">`).join('');
     f.nom.value = a.nom; f.prix.value = a.prix; f.achat.value = a.achat ?? '';
     f.stock.value = tracked(a) && editArt ? stockLeft(a) : (editArt ? '' : a.stock); f.cat.value = a.cat || '';
+    f.alerte.value = a.alerte ?? '';
+    $('#artStockLabel').textContent = editArt ? 'Stock actuel' : 'Quantité en stock';
     $('#artDel').hidden = !editArt;
-    $('#artInfo').textContent = editArt ? `${nf.format(soldQty(a))} vendu(s) au total. Pour réapprovisionner, augmentez le stock actuel.` : 'Le prix sera mis automatiquement dans la vente quand vous choisirez cet article.';
+    $('#artInfo').textContent = editArt ? `${nf.format(soldQty(a))} vendu(s) au total. Pour un arrivage, utilisez plutôt « + Ajouter au stock » dans la fiche de l'article.` : 'Le prix sera mis automatiquement dans la vente quand vous choisirez cet article, et le stock baissera à chaque vente.';
     aDlg.showModal();
   }
   aDlg.addEventListener('close', () => {
@@ -404,10 +492,17 @@
     const other = findArticle(nom);
     if (other && other !== editArt) { toast('Un article porte déjà ce nom'); return; }
     const data = { nom, prix: num(f.prix.value), achat: f.achat.value === '' ? '' : num(f.achat.value), cat: f.cat.value.trim() };
+    data.alerte = f.alerte.value === '' ? '' : num(f.alerte.value);
     const target = editArt || { id: uid() };
     Object.assign(target, data);
     // On saisit le stock actuel : on mémorise stock actuel + quantités déjà vendues
+    const avant = tracked(target) ? stockLeft(target) : null;
     target.stock = f.stock.value === '' ? '' : num(f.stock.value) + soldQty(target);
+    if (f.stock.value !== '') {
+      const n = num(f.stock.value);
+      if (!editArt || avant === null) mv(target, { type: 'entree', qte: n, note: 'Stock de départ' });
+      else if (n !== avant) mv(target, { type: 'inventaire', qte: n, ecart: n - avant });
+    }
     if (!editArt) db.articles.push(target);
     save(); render(); toast(editArt ? 'Article modifié' : 'Article ajouté ✔');
   });
@@ -468,7 +563,7 @@
       + others.map(c => `<option value="${esc(c)}">`).join('');
     // Raccourcis : les 6 articles les plus vendus
     $('#quickArticles').innerHTML = popularArticles().slice(0, 6)
-      .map(a => `<button type="button" data-art="${a.id}">${esc(a.nom)} <b>${esc(nf.format(num(a.prix)))}</b></button>`).join('');
+      .map(a => { const s = stockLeft(a); return `<button type="button" data-art="${a.id}">${esc(a.nom)} <b>${esc(nf.format(num(a.prix)))}</b>${s === null ? '' : ` <small class="${s <= seuil(a) ? 'stock-low' : 'muted'}">(${s <= 0 ? 'épuisé' : 'reste ' + nf.format(s)})</small>`}</button>`; }).join('');
   }
 
   function prodHint(a) {
@@ -779,7 +874,7 @@
     renderVendor();
     closeDialogs();
   }
-  const closeDialogs = () => [vDlg, dDlg, aDlg, apDlg, pDlg, cDlg].forEach(d => d.open && d.close());
+  const closeDialogs = () => [vDlg, dDlg, aDlg, apDlg, pDlg, cDlg, avDlg].forEach(d => d.open && d.close());
   let started = false;
   function unlock() {
     document.body.classList.remove('locked');
