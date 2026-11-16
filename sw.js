@@ -1,5 +1,5 @@
 // Service worker : l'application fonctionne hors connexion
-const CACHE = 'carnet-v1';
+const CACHE = 'carnet-v2';
 const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'manifest.json', 'icon.svg'];
 
 self.addEventListener('install', e => {

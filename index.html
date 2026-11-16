@@ -95,6 +95,27 @@
       </div>
     </section>
 
+    <!-- CLIENTS -->
+    <section class="view" id="view-clients" hidden>
+      <div class="datebar">
+        <button class="icon-btn" data-month="-1" aria-label="Mois précédent">‹</button>
+        <div class="date-input"><span class="monthLabel"></span></div>
+        <button class="icon-btn" data-month="1" aria-label="Mois suivant">›</button>
+      </div>
+      <div class="star" id="clientMois"></div>
+      <div class="stats">
+        <div class="stat"><span>Clients du mois</span><strong id="clNb">0</strong></div>
+        <div class="stat accent"><span>Nouveaux clients</span><strong id="clNew">0</strong></div>
+        <div class="stat"><span>Clients ordinaires</span><strong id="clOrd">0</strong></div>
+      </div>
+      <div class="sheet">
+        <h2 class="script">Mes clients</h2>
+        <input class="search" id="clSearch" type="search" placeholder="Rechercher un nom ou un numéro">
+        <ul class="client-list" id="clientList"></ul>
+        <p class="empty" id="clientEmpty">Aucun client enregistré pour l'instant.</p>
+      </div>
+    </section>
+
     <!-- BILAN -->
     <section class="view" id="view-bilan" hidden>
       <div class="datebar">
@@ -158,6 +179,7 @@
     <button data-view="ventes" class="active"><span>🧾</span>Ventes</button>
     <button data-view="depenses"><span>💸</span>Dépenses</button>
     <button data-view="credits"><span>⏳</span>Crédits</button>
+    <button data-view="clients"><span>👥</span>Clients</button>
     <button data-view="bilan"><span>📊</span>Bilan</button>
     <button data-view="profil"><span>⚙️</span>Profil</button>
   </nav>
@@ -170,10 +192,15 @@
         <label>Date<input type="date" name="date" required></label>
         <label>Heure<input type="time" name="heure"></label>
       </div>
-      <div class="two-col">
-        <label>Nom du client<input name="client" list="clientsList" autocomplete="off"></label>
-        <label>Numéro<input name="tel" type="tel" inputmode="tel"></label>
+      <div class="client-quick">
+        <button type="button" class="chip" id="btnOrdinaire">👤 Client ordinaire</button>
+        <button type="button" class="chip" id="btnPickClient">📇 Choisir un client</button>
       </div>
+      <div class="two-col">
+        <label>Numéro<input name="tel" type="tel" inputmode="tel" list="telsList" autocomplete="off" placeholder="Tapez le numéro"></label>
+        <label>Nom du client<input name="client" list="clientsList" autocomplete="off"></label>
+      </div>
+      <p class="hint" id="clientHint" hidden></p>
       <label>Produit<input name="produit" list="produitsList" required autocomplete="off"></label>
       <div class="three-col">
         <label>Qté<input name="qte" type="number" min="0" step="any" inputmode="decimal" value="1" required></label>
@@ -231,7 +258,32 @@
     </form>
   </dialog>
 
+  <!-- Choisir un client existant -->
+  <dialog id="pickDlg">
+    <div class="form">
+      <h3>Choisir un client</h3>
+      <input class="search" id="pickSearch" type="search" placeholder="Nom ou numéro">
+      <ul class="client-list" id="pickList"></ul>
+      <p class="empty" id="pickEmpty" hidden>Aucun client trouvé.</p>
+      <div class="dlg-actions"><span class="grow"></span><button class="btn ghost" type="button" id="pickClose">Fermer</button></div>
+    </div>
+  </dialog>
+
+  <!-- Fiche client -->
+  <dialog id="clientDlg">
+    <div class="form">
+      <h3 id="cdName"></h3>
+      <div id="cdBody"></div>
+      <div class="dlg-actions">
+        <button class="btn ghost" type="button" id="cdClose">Fermer</button>
+        <span class="grow"></span>
+        <button class="btn" type="button" id="cdSale">+ Nouvelle vente</button>
+      </div>
+    </div>
+  </dialog>
+
   <datalist id="clientsList"></datalist>
+  <datalist id="telsList"></datalist>
   <datalist id="produitsList"></datalist>
   <div class="toast" id="toast" role="status"></div>
 
