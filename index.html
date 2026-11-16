@@ -30,6 +30,12 @@
       <img src="icon.svg" alt="" width="72" height="72">
       <h2 class="script big">Carnet de gestion des ventes</h2>
       <p id="lockMsg">Entrez votre clé de licence pour activer l'application.</p>
+      <div class="pay-box" id="lockPayBox">
+        <div class="price"><b id="lockPrice">1 000 FCFA</b> / mois</div>
+        <p class="muted">Payez avec Orange Money, Moov Money ou par carte : votre clé arrive tout de suite.</p>
+        <button class="btn" type="button" id="lockPay">Payer mon abonnement</button>
+      </div>
+      <p class="or"><span>J'ai déjà une clé</span></p>
       <form id="lockForm" class="form">
         <label>Clé de licence<input name="key" placeholder="CARNET-XXXX-XXXX-XXXX" autocapitalize="characters" autocomplete="off" spellcheck="false" required></label>
         <button class="btn" type="submit" id="lockBtn">Activer</button>
@@ -197,6 +203,8 @@
         <h2 class="script">Licence</h2>
         <div id="licInfo" class="muted"></div>
         <div class="btn-col" style="margin-top:10px">
+          <button class="btn" id="licRenew">Prolonger mon abonnement</button>
+          <button class="btn ghost" id="licCopy">Copier ma clé de licence</button>
           <button class="btn ghost" id="licCheck">Vérifier ma licence maintenant</button>
           <button class="btn ghost" id="licChange">Changer de clé de licence</button>
         </div>
@@ -302,6 +310,39 @@
         <button class="btn" value="save" type="submit">Enregistrer</button>
       </div>
     </form>
+  </dialog>
+
+  <!-- Paiement de l'abonnement -->
+  <dialog id="payDlg">
+    <form method="dialog" id="payForm" class="form">
+      <h3 id="payTitle">Abonnement</h3>
+      <p class="muted" id="payIntro">Paiement sécurisé par SasPay : Orange Money, Moov Money ou carte bancaire.</p>
+      <label class="new-only">Nom de la boutique<input name="boutique" autocomplete="organization"></label>
+      <label>Votre numéro de téléphone<input name="telephone" type="tel" inputmode="tel" required placeholder="+226 ..."></label>
+      <label>E-mail <small>(facultatif, pour le reçu)</small><input name="email" type="email" inputmode="email"></label>
+      <label>Durée
+        <select name="mois">
+          <option value="1">1 mois</option><option value="3">3 mois</option><option value="6">6 mois</option><option value="12">12 mois</option>
+        </select>
+      </label>
+      <label class="new-only">Code parrain <small>(facultatif)</small><input name="parrain" autocapitalize="characters" autocomplete="off"></label>
+      <div class="pay-total">Total à payer : <b id="payTotal">1 000 FCFA</b></div>
+      <p class="lock-err" id="payErr" hidden></p>
+      <div class="dlg-actions">
+        <button class="btn ghost" value="cancel" formnovalidate>Annuler</button>
+        <span class="grow"></span>
+        <button class="btn" value="pay" type="submit" id="payBtn">Payer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Suivi du paiement -->
+  <dialog id="payStatusDlg">
+    <div class="form" style="text-align:center">
+      <h3 id="psTitle">Vérification du paiement…</h3>
+      <div id="psBody" class="muted"></div>
+      <div class="dlg-actions" id="psActions"></div>
+    </div>
   </dialog>
 
   <!-- Choisir un client existant -->

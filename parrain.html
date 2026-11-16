@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Espace parrain</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body { padding-bottom: 40px; }
+    main { display: flex; flex-direction: column; gap: 12px; }
+    .link { font-family: ui-monospace, monospace; font-size: 14px; word-break: break-all; background: var(--peach-soft);
+      border-radius: 10px; padding: 10px 12px; user-select: all; }
+    .hist { list-style: none; margin: 0; padding: 0; }
+    .hist li { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); padding: 8px 0; font-size: 14px; }
+    .paid { color: var(--good); font-size: 12px; font-weight: 600; } .due { color: var(--accent); font-size: 12px; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">🤝</span>
+      <div><div class="brand-name">Espace parrain</div><div class="brand-sub">Carnet de gestion des ventes</div></div>
+    </div>
+  </header>
+  <main>
+    <div class="sheet" id="loginBox">
+      <h2 class="script">Mon code parrain</h2>
+      <form class="form" id="codeForm">
+        <label>Code<input name="code" autocapitalize="characters" autocomplete="off" required placeholder="Ex : AWA123"></label>
+        <button class="btn" type="submit">Voir mes gains</button>
+      </form>
+      <p class="lock-err" id="err" hidden></p>
+    </div>
+    <div id="dash" hidden>
+      <div class="sheet">
+        <h2 class="script" id="hello">Bonjour</h2>
+        <p class="muted" id="rule"></p>
+        <div class="link" id="myLink"></div>
+        <div class="btn-col" style="margin-top:10px">
+          <button class="btn" id="copyLink" type="button">Copier mon lien</button>
+          <a class="btn ghost" id="shareWa" target="_blank" rel="noopener">Partager sur WhatsApp</a>
+        </div>
+      </div>
+      <div class="stats" style="margin-top:12px">
+        <div class="stat"><span>Clients</span><strong id="sClients">0</strong></div>
+        <div class="stat accent"><span>À recevoir</span><strong id="sDue">0</strong></div>
+        <div class="stat good"><span>Déjà reçu</span><strong id="sPaid">0</strong></div>
+      </div>
+      <div class="sheet" style="margin-top:12px">
+        <h2 class="script">Mes commissions</h2>
+        <ul class="hist" id="hist"></ul>
+        <p class="empty" id="histEmpty">Pas encore de commission. Partagez votre lien !</p>
+      </div>
+    </div>
+  </main>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="config.js"></script>
+  <script>
+  (() => {
+    const $ = s => document.querySelector(s);
+    const CFG = window.CARNET_CONFIG || {};
+    const base = (CFG.licenceUrl || '').replace(/licences\.json$/, '');
+    const nf = new Intl.NumberFormat('fr-FR');
+    const money = n => nf.format(n) + ' FCFA';
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const get = async f => { const r = await fetch(base + f + '?t=' + Date.now(), { cache: 'no-store' }); if (!r.ok) throw new Error(r.status); return r.json(); };
+    let toastT;
+    const toast = m => { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2200); };
+
+    async function show(code) {
+      code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      $('#err').hidden = true;
+      try {
+        const [p, c, l] = await Promise.all([get('parrains.json'), get('commissions.json'), get('licences.json')]);
+        const me = (p.parrains || []).find(x => x.code === code);
+        if (!me) { $('#err').textContent = 'Code parrain inconnu.'; $('#err').hidden = false; return; }
+        try { localStorage.setItem('carnet-mon-code', code); } catch {}
+        const link = `${location.origin}/?ref=${code}`;
+        $('#hello').textContent = `Bonjour ${me.nom || code}`;
+        $('#rule').textContent = `Vous gagnez ${Math.round((p.commission ?? 0.25) * 100)} % de chaque paiement des boutiques qui s'abonnent avec votre lien.` + (me.actif === false ? ' (Votre code est actuellement désactivé.)' : '');
+        $('#myLink').textContent = link;
+        $('#copyLink').onclick = async () => { try { await navigator.clipboard.writeText(link); toast('Lien copié ✔'); } catch { toast(link); } };
+        $('#shareWa').href = 'https://wa.me/?text=' + encodeURIComponent(`Gérez vos ventes, crédits clients et stock depuis votre téléphone avec le Carnet de gestion des ventes : ${link}`);
+        const mine = (c.commissions || []).filter(x => x.parrain === code).sort((a, b) => b.date.localeCompare(a.date));
+        $('#sClients').textContent = (l.licences || []).filter(x => x.parrain === code).length;
+        $('#sDue').textContent = money(mine.filter(x => !x.paye).reduce((s, x) => s + x.montant, 0));
+        $('#sPaid').textContent = money(mine.filter(x => x.paye).reduce((s, x) => s + x.montant, 0));
+        $('#hist').innerHTML = mine.map(x => `<li><div>${esc(x.boutique)}<div class="muted" style="font-size:12px">${esc(x.date)} · vente ${money(x.vente)}</div></div>
+          <div style="text-align:right"><b>${money(x.montant)}</b><div class="${x.paye ? 'paid' : 'due'}">${x.paye ? 'Reçu' : 'À recevoir'}</div></div></li>`).join('');
+        $('#histEmpty').hidden = mine.length > 0;
+        $('#dash').hidden = false; $('#loginBox').hidden = true;
+      } catch (e) { $('#err').textContent = 'Impossible de charger les données. Vérifiez votre connexion.'; $('#err').hidden = false; }
+    }
+    $('#codeForm').addEventListener('submit', e => { e.preventDefault(); show(e.target.elements.code.value); });
+    const q = new URLSearchParams(location.search).get('code');
+    let saved = ''; try { saved = localStorage.getItem('carnet-mon-code') || ''; } catch {}
+    if (q || saved) { $('#codeForm').elements.code.value = q || saved; show(q || saved); }
+  })();
+  </script>
+</body>
+</html>

@@ -433,7 +433,7 @@
     const f = $('#profilForm');
     ['marque', 'responsable', 'contacts', 'reseaux', 'devise'].forEach(k => (f.elements[k].value = db.profile[k] || ''));
     $('#licInfo').innerHTML = lic
-      ? `Boutique : <b>${esc(lic.boutique || '—')}</b><br>Clé : ${esc(maskKey(lic.key))}<br>
+      ? `Boutique : <b>${esc(lic.boutique || '—')}</b><br>Clé : <b style="font-family:ui-monospace,monospace">${esc(lic.key || maskKey(''))}</b><br>
          Valable ${lic.expire ? `jusqu'au <b>${dayFmt.format(parseIso(lic.expire))}</b>` : '<b>sans limite de durée</b>'}<br>
          Dernière vérification : ${lic.lastCheck ? new Date(lic.lastCheck).toLocaleString('fr-FR') : '—'}`
       : 'Aucune licence active.';
@@ -697,7 +697,16 @@
   // ---------- Licence ----------
   // Les licences sont dans un fichier licences.json sur GitHub (voir config.js).
   // Chaque licence y est enregistrée par l'empreinte SHA-256 de sa clé : la clé elle-même n'est jamais publiée.
-  const CFG = Object.assign({ licenceUrl: '', horsLigneMaxJours: 30, alerteJours: 7, verifHeures: 6 }, window.CARNET_CONFIG || {});
+  const CFG = Object.assign({ licenceUrl: '', horsLigneMaxJours: 30, alerteJours: 7, verifHeures: 6, paiementActif: false, prixMois: 1000 }, window.CARNET_CONFIG || {});
+  const GRACE_MS = 20 * 60e3; // juste après un paiement, GitHub peut mettre quelques minutes à publier la licence
+  const PAY_KEY = 'carnet-paiement-v1', REF_KEY = 'carnet-parrain';
+
+  // Lien de parrainage : ?ref=CODE (le premier parrain est conservé)
+  const params = new URLSearchParams(location.search);
+  const refParam = (params.get('ref') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  try { if (refParam && !localStorage.getItem(REF_KEY)) localStorage.setItem(REF_KEY, refParam); } catch {}
+  const retourPaiement = params.get('paiement') === 'retour';
+  if (refParam || retourPaiement) history.replaceState(null, '', location.pathname);
   const LIC_KEY = 'carnet-licence-v1', VENDOR_KEY = 'carnet-vendeur-v1';
   const readJSON = k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
   const writeJSON = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch {} };
@@ -762,6 +771,8 @@
       const data = await fetchLicences();
       const e = (data.licences || []).find(x => x.hash === lic.hash);
       const st = statusOf(e);
+      // Paiement tout récent : le fichier GitHub n'est peut-être pas encore à jour, on garde la licence reçue du serveur
+      if (lic.grace && Date.now() - lic.grace < GRACE_MS && (st !== 'ok' || (lic.expire && e.expire && e.expire < lic.expire))) { unlock(); return 'ok'; }
       if (st === 'ok') {
         lic = { ...lic, expire: e.expire || '', boutique: e.boutique || lic.boutique, lastCheck: Date.now() };
         writeJSON(LIC_KEY, lic); unlock();
@@ -770,6 +781,11 @@
     } catch { return 'reseau'; }
   }
   async function bootLicence() {
+    $('#lockPayBox').hidden = !CFG.paiementActif;
+    $('#lockPrice').textContent = money(CFG.prixMois);
+    $('#licRenew').hidden = !CFG.paiementActif;
+    // Retour de la page de paiement (ou paiement resté en attente) : on le confirme d'abord
+    if (readJSON(PAY_KEY)) { if (!lic) lock(); confirmPayment(true); if (!lic) return; }
     if (!lic) return lock();
     // Décision immédiate avec la dernière vérification connue (fonctionne hors connexion)
     const days = (Date.now() - (lic.lastCheck || 0)) / 864e5;
@@ -813,6 +829,114 @@
     if (!confirm('Saisir une autre clé de licence ? Vos données ne seront pas effacées.')) return;
     lic = null; writeJSON(LIC_KEY, null); $('#lockForm').elements.key.value = ''; lock();
   });
+  $('#licCopy').addEventListener('click', async () => {
+    if (!lic) return;
+    try { await navigator.clipboard.writeText(lic.key); toast('Clé copiée ✔'); } catch { toast(lic.key); }
+  });
+
+  // ---------- Paiement de l'abonnement (SasPay) ----------
+  const payDlg = $('#payDlg'), payForm = $('#payForm'), psDlg = $('#payStatusDlg');
+  function payTotal() { $('#payTotal').textContent = money(CFG.prixMois * Number(payForm.elements.mois.value)); }
+  payForm.elements.mois.addEventListener('change', payTotal);
+  function openPay(renew) {
+    const f = payForm.elements;
+    payForm.classList.toggle('renew', !!renew);
+    payForm.dataset.renew = renew ? '1' : '';
+    $('#payTitle').textContent = renew ? 'Prolonger mon abonnement' : `Abonnement ${money(CFG.prixMois)} / mois`;
+    f.boutique.value = db.profile.marque || '';
+    f.boutique.required = !renew;
+    f.telephone.value = (db.profile.contacts || '').match(/[+\d][\d\s.-]{6,}/)?.[0]?.trim() || '';
+    try { f.parrain.value = localStorage.getItem(REF_KEY) || ''; } catch { f.parrain.value = ''; }
+    f.mois.value = '1'; payTotal();
+    $('#payErr').hidden = true;
+    payDlg.showModal();
+  }
+  $('#lockPay').addEventListener('click', () => openPay(false));
+  $('#licRenew').addEventListener('click', () => openPay(true));
+  $('#licBanner').addEventListener('click', () => { if (CFG.paiementActif && lic) openPay(true); });
+  payForm.addEventListener('submit', async e => {
+    if (e.submitter && e.submitter.value === 'cancel') return;
+    e.preventDefault();
+    const f = payForm.elements, renew = payForm.dataset.renew === '1';
+    const btn = $('#payBtn'); btn.disabled = true; btn.textContent = 'Connexion à SasPay…';
+    $('#payErr').hidden = true;
+    try {
+      const r = await fetch('/api/checkout', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          boutique: f.boutique.value.trim(), telephone: f.telephone.value.trim(), email: f.email.value.trim(),
+          mois: Number(f.mois.value), parrain: renew ? '' : f.parrain.value.trim(), renouveler: renew && lic ? lic.hash : '',
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.checkout_url) throw new Error(j.error || 'Le paiement est momentanément indisponible.');
+      if (!db.profile.marque && f.boutique.value.trim()) db.profile.marque = f.boutique.value.trim();
+      if (!db.profile.contacts && f.telephone.value.trim()) db.profile.contacts = f.telephone.value.trim();
+      save();
+      writeJSON(PAY_KEY, { commande: j.commande, renew, at: Date.now() });
+      location.href = j.checkout_url; // page de paiement SasPay
+    } catch (err) {
+      $('#payErr').textContent = err.message === 'Failed to fetch' ? lockMessages.reseau.replace("l'activation", 'le paiement') : err.message;
+      $('#payErr').hidden = false;
+      btn.disabled = false; btn.textContent = 'Payer';
+    }
+  });
+
+  function payStatus(title, html, actions) {
+    $('#psTitle').textContent = title;
+    $('#psBody').innerHTML = html;
+    $('#psActions').innerHTML = '';
+    actions.forEach(([label, fn, ghost]) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'btn' + (ghost ? ' ghost' : ''); b.textContent = label;
+      b.addEventListener('click', fn); $('#psActions').appendChild(b);
+    });
+    if (!psDlg.open) psDlg.showModal();
+  }
+  let pollT = null, pollN = 0;
+  async function confirmPayment(first) {
+    const p = readJSON(PAY_KEY); if (!p) return;
+    clearTimeout(pollT);
+    if (first) pollN = 0;
+    payStatus('Vérification du paiement…', '<div class="spinner"></div>Nous vérifions votre paiement auprès de SasPay.', []);
+    let j;
+    try {
+      const r = await fetch('/api/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commande: p.commande }) });
+      j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'Erreur ' + r.status);
+    } catch (err) {
+      return payStatus('Vérification impossible', esc(err.message === 'Failed to fetch' ? 'Pas de connexion internet.' : err.message) + '<br>Votre paiement n\'est pas perdu : réessayez dans un instant.',
+        [['Réessayer', () => confirmPayment(true)], ['Fermer', () => psDlg.close(), true]]);
+    }
+    if (j.statut === 'ok') {
+      writeJSON(PAY_KEY, null);
+      const L = j.licence;
+      if (j.cle) lic = { key: j.cle, hash: L.hash, boutique: L.boutique, telephone: '', expire: L.expire, lastCheck: Date.now(), grace: Date.now() };
+      else lic = { ...lic, expire: L.expire, lastCheck: Date.now(), grace: Date.now() };
+      writeJSON(LIC_KEY, lic);
+      if (!db.profile.marque && L.boutique) { db.profile.marque = L.boutique; save(); }
+      unlock();
+      const fin = L.expire ? `jusqu'au <b>${dayFmt.format(parseIso(L.expire))}</b>` : 'sans limite de durée';
+      return payStatus('Paiement réussi ✔', j.cle
+        ? `Votre abonnement est actif ${fin}.<br>Voici votre clé de licence : notez-la, elle sert à réinstaller l'application.<div class="keybox">${esc(j.cle)}</div>`
+        : `Votre abonnement est prolongé ${fin}. Merci !`,
+        [['Copier la clé', async () => { try { await navigator.clipboard.writeText(lic.key); toast('Clé copiée ✔'); } catch {} }, true], ['Commencer', () => psDlg.close()]].filter((a, i) => j.cle || i === 1));
+    }
+    if (j.statut === 'echec') {
+      writeJSON(PAY_KEY, null);
+      return payStatus('Paiement non abouti', 'Le paiement a été annulé ou a échoué. Aucun montant n\'a été validé.',
+        [['Réessayer le paiement', () => { psDlg.close(); openPay(!!p.renew && !!lic); }], ['Fermer', () => psDlg.close(), true]]);
+    }
+    // En attente : le client valide encore sur son téléphone
+    pollN++;
+    if (pollN < 24) pollT = setTimeout(() => confirmPayment(false), 5000);
+    payStatus('Paiement en attente…', '<div class="spinner"></div>Validez le paiement sur votre téléphone (Orange Money / Moov Money). Cette page se met à jour toute seule.',
+      [['Vérifier maintenant', () => confirmPayment(false)], ['Abandonner', () => {
+        if (!confirm('Abandonner ce paiement ? Si vous avez déjà payé, gardez-le en attente.')) return;
+        clearTimeout(pollT); writeJSON(PAY_KEY, null); psDlg.close();
+      }, true]]);
+  }
+
   // Revérifie quand on revient sur l'application
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && lic && Date.now() - (lic.lastCheck || 0) > CFG.verifHeures * 36e5) verifyOnline();

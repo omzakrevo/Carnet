@@ -11,5 +11,9 @@ window.CARNET_CONFIG = {
   alerteJours: 7,
 
   // L'application revérifie la licence au plus tôt toutes les N heures (au démarrage et au retour dans l'appli)
-  verifHeures: 6
+  verifHeures: 6,
+
+  // Paiement en ligne (SasPay). Le prix réellement facturé est fixé côté serveur (variable PRIX_MOIS sur Vercel).
+  paiementActif: true,
+  prixMois: 1000
 };

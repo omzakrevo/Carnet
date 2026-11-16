@@ -44,7 +44,7 @@
       <h2 class="script">Nouvelle licence</h2>
       <form class="form" id="newForm">
         <label>Nom de la boutique<input name="boutique" required placeholder="Ex : Bazar du coin"></label>
-        <label>Téléphone de la boutique<input name="telephone" type="tel" placeholder="+226 ..."></label>
+        <label>Téléphone de la boutique <small>(facultatif, visible publiquement sur GitHub)</small><input name="telephone" type="tel" placeholder="+226 ..."></label>
         <div class="two-col">
           <label>Durée
             <select name="duree">
@@ -75,13 +75,43 @@
 
     <div class="sheet">
       <h2 class="script">Fichier licences.json</h2>
-      <p class="muted">Contenu à coller sur GitHub. Vous pouvez aussi modifier le nom et le téléphone du vendeur affichés aux clients bloqués.</p>
+      <p class="muted">Contenu à coller sur GitHub (ou enregistrez-le directement avec un jeton, plus bas). Vous pouvez aussi modifier le nom et le téléphone du vendeur affichés aux clients bloqués.</p>
       <textarea class="json search" id="jsonOut" spellcheck="false"></textarea>
       <div class="btn-col">
         <button class="btn" id="copyJson" type="button">Copier le fichier</button>
         <a class="btn ghost" id="ghLink" target="_blank" rel="noopener">Ouvrir licences.json sur GitHub</a>
         <button class="btn ghost" id="reload" type="button">Recharger depuis GitHub</button>
       </div>
+    </div>
+
+    <div class="sheet">
+      <h2 class="script">Parrains (revendeurs)</h2>
+      <p class="muted">Chaque parrain a un lien. Les boutiques qui paient avec ce lien lui rapportent <b id="pctLabel">25 %</b> de chaque paiement.
+        Le parrain suit ses gains sur la page <a href="parrain.html" target="_blank">parrain.html</a>.</p>
+      <form class="form" id="parrainForm">
+        <div class="two-col">
+          <label>Nom du parrain<input name="nom" required placeholder="Ex : Awa"></label>
+          <label>Code <small>(auto si vide)</small><input name="code" autocapitalize="characters" placeholder="AWA123"></label>
+        </div>
+        <button class="btn ghost" type="submit">Ajouter le parrain</button>
+      </form>
+      <div class="table-wrap" style="margin-top:10px"><table class="lic-table"><thead><tr><th>Parrain</th><th>Clients</th><th>À payer</th><th></th></tr></thead><tbody id="parRows"></tbody></table></div>
+      <p class="muted" id="parEmpty">Aucun parrain pour l'instant.</p>
+    </div>
+
+    <div class="sheet">
+      <h2 class="script">Enregistrement sur GitHub</h2>
+      <p class="muted">Sans jeton, copiez chaque fichier modifié et collez-le sur GitHub. Avec un jeton GitHub (le même que sur Vercel),
+        le bouton ci-dessous enregistre directement. Le jeton reste dans ce navigateur.</p>
+      <label class="form">Jeton GitHub <small>(facultatif)</small><input class="search" id="ghToken" type="password" autocomplete="off" placeholder="github_pat_…"></label>
+      <div class="btn-col">
+        <button class="btn" id="saveAll" type="button">Enregistrer les modifications sur GitHub</button>
+        <button class="btn ghost" id="copyPar" type="button">Copier parrains.json</button>
+        <a class="btn ghost" id="ghParLink" target="_blank" rel="noopener">Ouvrir parrains.json sur GitHub</a>
+        <button class="btn ghost" id="copyCom" type="button">Copier commissions.json</button>
+        <a class="btn ghost" id="ghComLink" target="_blank" rel="noopener">Ouvrir commissions.json sur GitHub</a>
+      </div>
+      <p class="muted" id="dirty"></p>
     </div>
 
     <div class="sheet">
@@ -130,7 +160,7 @@
     function renderRows() {
       $('#licRows').innerHTML = (data.licences || []).map((e, i) => {
         const [s, cls] = statut(e);
-        return `<tr><td><b>${esc(e.boutique)}</b><br><span class="muted">${esc(e.id || '')} ${esc(e.telephone || '')}</span></td>
+        return `<tr><td><b>${esc(e.boutique)}</b><br><span class="muted">${esc(e.id || '')} ${esc(e.telephone || '')}${e.parrain ? ' · parrain ' + esc(e.parrain) : ''}</span></td>
           <td>${e.expire ? esc(e.expire) : 'Sans limite'}</td><td class="st ${cls}">${s}</td>
           <td><div class="row-btns">
             <button data-i="${i}" data-act="m1">+1 mois</button><button data-i="${i}" data-act="m12">+1 an</button>
@@ -146,9 +176,9 @@
       if (b.dataset.act === 'm12') lic.expire = addMonths(base, 12);
       if (b.dataset.act === 'toggle') lic.actif = lic.actif === false;
       if (b.dataset.act === 'del') { if (!confirm(`Supprimer la licence de « ${lic.boutique} » ?`)) return; data.licences.splice(Number(b.dataset.i), 1); }
-      writeJson(); toast('Modifié : pensez à copier le fichier sur GitHub');
+      writeJson(); markDirty('licences.json'); toast('Modifié : pensez à enregistrer sur GitHub');
     });
-    $('#jsonOut').addEventListener('change', () => { if (readJson()) renderRows(); });
+    $('#jsonOut').addEventListener('change', () => { if (readJson()) { renderRows(); markDirty('licences.json'); } });
 
     async function load() {
       $('#loadInfo').textContent = 'Chargement depuis GitHub…';
@@ -194,7 +224,7 @@
     $('#copyKey').addEventListener('click', () => copy($('#keyOut').textContent));
     $('#addEntry').addEventListener('click', () => {
       if (!pending || !readJson()) return;
-      data.licences.push(pending); pending = null; writeJson();
+      data.licences.push(pending); pending = null; writeJson(); markDirty('licences.json');
       $('#addEntry').disabled = true; setTimeout(() => ($('#addEntry').disabled = false), 800);
       toast('Ajoutée : copiez le fichier et collez-le sur GitHub');
     });
@@ -208,7 +238,95 @@
       $('#checkOut').innerHTML = lic ? `Clé de <b>${esc(lic.boutique)}</b> : ${statut(lic)[0]}${lic.expire ? ` (expire le ${esc(lic.expire)})` : ''}` : 'Clé inconnue.';
     });
 
-    load();
+    // ---------- Parrains et commissions ----------
+    const ghEdit = m ? `https://github.com/${m[1]}/${m[2]}/edit/${m[3]}/` : '#';
+    const rawBase = (CFG.licenceUrl || '').replace(/licences\.json$/, '');
+    $('#ghParLink').href = ghEdit + 'parrains.json';
+    $('#ghComLink').href = ghEdit + 'commissions.json';
+    let par = { commission: 0.25, parrains: [] }, com = { commissions: [] };
+    const changed = new Set();
+    const markDirty = f => { changed.add(f); $('#dirty').textContent = 'À enregistrer sur GitHub : ' + [...changed].join(', '); };
+    const nf = new Intl.NumberFormat('fr-FR'); const money = n => nf.format(n) + ' FCFA';
+    async function loadPC() {
+      const get = async (f, fb) => { try { const r = await fetch(rawBase + f + '?t=' + Date.now(), { cache: 'no-store' }); return r.ok ? await r.json() : fb; } catch { return fb; } };
+      par = await get('parrains.json', par); com = await get('commissions.json', com);
+      par.parrains = par.parrains || []; com.commissions = com.commissions || [];
+      renderPar();
+    }
+    function renderPar() {
+      $('#pctLabel').textContent = Math.round((par.commission ?? 0.25) * 100) + ' %';
+      $('#parRows').innerHTML = par.parrains.map((p, i) => {
+        const clients = (data.licences || []).filter(l => l.parrain === p.code).length;
+        const mine = com.commissions.filter(c => c.parrain === p.code);
+        const due = mine.filter(c => !c.paye).reduce((s, c) => s + c.montant, 0);
+        const paid = mine.filter(c => c.paye).reduce((s, c) => s + c.montant, 0);
+        return `<tr><td><b>${esc(p.nom)}</b><br><span class="muted">${esc(p.code)}${p.actif === false ? ' · désactivé' : ''}</span></td>
+          <td>${clients}</td><td><b>${money(due)}</b><br><span class="muted">déjà payé ${money(paid)}</span></td>
+          <td><div class="row-btns">
+            <button data-p="${i}" data-act="link">Copier le lien</button>
+            ${due ? `<button data-p="${i}" data-act="pay">Marquer payé</button>` : ''}
+            <button data-p="${i}" data-act="toggle">${p.actif === false ? 'Réactiver' : 'Désactiver'}</button></div></td></tr>`;
+      }).join('');
+      $('#parEmpty').hidden = par.parrains.length > 0;
+    }
+    $('#parRows').addEventListener('click', e => {
+      const b = e.target.closest('button[data-act]'); if (!b) return;
+      const p = par.parrains[Number(b.dataset.p)];
+      if (b.dataset.act === 'link') return copy(`${location.origin}/?ref=${p.code}`);
+      if (b.dataset.act === 'pay') {
+        const due = com.commissions.filter(c => c.parrain === p.code && !c.paye);
+        const tot = due.reduce((s, c) => s + c.montant, 0);
+        if (!confirm(`Confirmez-vous avoir envoyé ${money(tot)} à ${p.nom} ?`)) return;
+        due.forEach(c => { c.paye = true; c.datePaiement = today(); });
+        markDirty('commissions.json');
+      }
+      if (b.dataset.act === 'toggle') { p.actif = p.actif === false; markDirty('parrains.json'); }
+      renderPar();
+    });
+    $('#parrainForm').addEventListener('submit', e => {
+      e.preventDefault();
+      const f = e.target.elements;
+      let code = normKey(f.code.value);
+      if (!code) {
+        const lettres = normKey(f.nom.value).replace(/[0-9]/g, '').slice(0, 4) || 'PAR';
+        do { code = lettres + String(crypto.getRandomValues(new Uint32Array(1))[0] % 900 + 100); } while (par.parrains.some(p => p.code === code));
+      }
+      if (par.parrains.some(p => p.code === code)) return toast('Ce code existe déjà');
+      par.parrains.push({ code, nom: f.nom.value.trim(), actif: true, cree: today() });
+      markDirty('parrains.json'); renderPar(); e.target.reset();
+      toast(`Parrain ajouté : lien ${location.origin}/?ref=${code}`);
+    });
+    $('#copyPar').addEventListener('click', () => copy(JSON.stringify(par, null, 2) + '\n'));
+    $('#copyCom').addEventListener('click', () => copy(JSON.stringify(com, null, 2) + '\n'));
+
+    // Enregistrement direct sur GitHub avec un jeton
+    try { $('#ghToken').value = localStorage.getItem('carnet-admin-token') || ''; } catch {}
+    $('#saveAll').addEventListener('click', async () => {
+      const token = $('#ghToken').value.trim();
+      if (!token) return toast('Collez d\'abord votre jeton GitHub (ou utilisez les boutons Copier)');
+      if (!m) return toast('Adresse des licences invalide dans config.js');
+      if (!changed.size) return toast('Aucune modification à enregistrer');
+      if (changed.has('licences.json') && !readJson()) return;
+      try { localStorage.setItem('carnet-admin-token', token); } catch {}
+      const contents = { 'licences.json': $('#jsonOut').value, 'parrains.json': JSON.stringify(par, null, 2) + '\n', 'commissions.json': JSON.stringify(com, null, 2) + '\n' };
+      const api = f => `https://api.github.com/repos/${m[1]}/${m[2]}/contents/${f}`;
+      const H = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' };
+      for (const f of [...changed]) {
+        try {
+          const cur = await fetch(api(f) + `?ref=${m[3]}`, { headers: H });
+          const sha = cur.ok ? (await cur.json()).sha : undefined;
+          const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(contents[f])));
+          const r = await fetch(api(f), { method: 'PUT', headers: { ...H, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: `Administration : mise à jour de ${f}`, content: b64, branch: m[3], ...(sha ? { sha } : {}) }) });
+          if (!r.ok) throw new Error(r.status === 401 ? 'jeton refusé' : 'erreur ' + r.status);
+          changed.delete(f);
+        } catch (err) { return toast(`${f} : ${err.message}`); }
+      }
+      $('#dirty').textContent = 'Tout est enregistré sur GitHub ✔';
+      toast('Enregistré sur GitHub ✔');
+    });
+
+    load().then(loadPC);
   })();
   </script>
 </body>
