@@ -40,6 +40,7 @@ La partie `vendeur` contient **votre nom et votre numéro**. Ils s'affichent sur
 
 ## Comportement côté client
 
+- **Essai gratuit** : au premier lancement, la personne peut essayer l'application **24 heures** sans payer (bouton « Essayer gratuitement »). Un bandeau affiche le temps restant. Ensuite l'application se bloque jusqu'au paiement, sans effacer les données saisies. La durée se règle dans `config.js` (`essaiHeures`, `0` pour désactiver).
 - **Activation** : internet est nécessaire.
 - **Vérification** : au démarrage et au retour dans l'application (au plus toutes les 6 heures).
 - **Sans internet** : l'application continue de marcher **30 jours** après la dernière vérification.
@@ -51,6 +52,7 @@ Ces durées se règlent dans `config.js`.
 ## Sécurité : ce qu'il faut savoir
 
 - Les clés ne sont **jamais publiées** : le fichier ne contient que leur empreinte SHA-256. Lire `licences.json` ne permet donc pas de retrouver une clé.
+- L'essai gratuit est mémorisé sur le téléphone : une personne qui efface les données de son navigateur peut relancer un essai, mais elle perd alors aussi toutes ses ventes.
 - La vérification se fait dans le navigateur du client. Quelqu'un qui s'y connaît en informatique pourrait la contourner. C'est le compromis d'un système simple, sans serveur : il suffit pour une clientèle de boutiques, pas contre un pirate déterminé.
 
 ## Paiement en ligne (SasPay) : 1 000 FCFA / mois

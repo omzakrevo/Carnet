@@ -15,5 +15,8 @@ window.CARNET_CONFIG = {
 
   // Paiement en ligne (SasPay). Le prix réellement facturé est fixé côté serveur (variable PRIX_MOIS sur Vercel).
   paiementActif: true,
-  prixMois: 1000
+  prixMois: 1000,
+
+  // Essai gratuit au premier lancement (en heures). 0 pour le désactiver.
+  essaiHeures: 24
 };

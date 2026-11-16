@@ -436,7 +436,12 @@
       ? `Boutique : <b>${esc(lic.boutique || '—')}</b><br>Clé : <b style="font-family:ui-monospace,monospace">${esc(lic.key || maskKey(''))}</b><br>
          Valable ${lic.expire ? `jusqu'au <b>${dayFmt.format(parseIso(lic.expire))}</b>` : '<b>sans limite de durée</b>'}<br>
          Dernière vérification : ${lic.lastCheck ? new Date(lic.lastCheck).toLocaleString('fr-FR') : '—'}`
-      : 'Aucune licence active.';
+      : trialActive()
+        ? `<b>Essai gratuit</b> jusqu'au ${new Date(trialEnd()).toLocaleString('fr-FR', { dateStyle: 'full', timeStyle: 'short' })} (encore ${leftText(trialEnd() - Date.now())}).`
+        : 'Aucune licence active.';
+    $('#licRenew').textContent = lic ? 'Prolonger mon abonnement' : `M'abonner (${money(CFG.prixMois)} / mois)`;
+    $('#licCopy').hidden = !lic;
+    $('#licChange').textContent = lic ? 'Changer de clé de licence' : "J'ai une clé de licence";
   }
   $('#profilForm').addEventListener('submit', e => {
     e.preventDefault();
@@ -698,6 +703,17 @@
   // Les licences sont dans un fichier licences.json sur GitHub (voir config.js).
   // Chaque licence y est enregistrée par l'empreinte SHA-256 de sa clé : la clé elle-même n'est jamais publiée.
   const CFG = Object.assign({ licenceUrl: '', horsLigneMaxJours: 30, alerteJours: 7, verifHeures: 6, paiementActif: false, prixMois: 1000 }, window.CARNET_CONFIG || {});
+  CFG.essaiHeures = Number(CFG.essaiHeures ?? 24);
+  // ---------- Essai gratuit ----------
+  const TRIAL_KEY = 'carnet-essai-v1';
+  const trialStart = () => { const t = readJSON(TRIAL_KEY); return t && t.debut ? t.debut : 0; };
+  const trialEnd = () => trialStart() + CFG.essaiHeures * 36e5;
+  const trialActive = () => !lic && trialStart() > 0 && Date.now() < trialEnd();
+  const trialOver = () => !lic && trialStart() > 0 && Date.now() >= trialEnd();
+  function leftText(ms) {
+    const tot = Math.max(1, Math.ceil(ms / 6e4)), h = Math.floor(tot / 60), m = tot % 60;
+    return h ? `${h} h${m ? ' ' + String(m).padStart(2, '0') + ' min' : ''}` : `${m} min`;
+  }
   const GRACE_MS = 20 * 60e3; // juste après un paiement, GitHub peut mettre quelques minutes à publier la licence
   const PAY_KEY = 'carnet-paiement-v1', REF_KEY = 'carnet-parrain';
 
@@ -751,6 +767,10 @@
     $('#lockErr').hidden = !err; $('#lockErr').textContent = err || '';
     if (lic && lic.key) $('#lockForm').elements.key.value = lic.key;
     $('#lockBtn').textContent = lic ? 'Réessayer' : 'Activer';
+    // L'essai gratuit n'est proposé qu'une fois, avant tout abonnement
+    $('#lockTrial').hidden = !(CFG.essaiHeures > 0 && !lic && (!trialStart() || trialActive()));
+    $('#lockTrial').textContent = trialActive() ? `Continuer l'essai gratuit (encore ${leftText(trialEnd() - Date.now())})` : `Essayer gratuitement pendant ${CFG.essaiHeures} heures`;
+    if (trialOver() && !msg) $('#lockMsg').textContent = `Votre essai gratuit de ${CFG.essaiHeures} heures est terminé. Abonnez-vous pour continuer : vos données sont conservées.`;
     renderVendor();
     [vDlg, dDlg, aDlg, apDlg, pDlg, cDlg].forEach(d => d.open && d.close());
   }
@@ -758,12 +778,33 @@
   function unlock() {
     document.body.classList.remove('locked');
     $('#lock').hidden = true;
+    renderBanner();
+    if (!started) { started = true; show('ventes'); } else render();
+  }
+  function renderBanner() {
     const b = $('#licBanner');
+    if (trialActive()) {
+      b.hidden = false;
+      b.textContent = `Essai gratuit : encore ${leftText(trialEnd() - Date.now())}.${CFG.paiementActif ? ` Touchez ici pour vous abonner (${money(CFG.prixMois)} / mois).` : ''}`;
+      return;
+    }
     const left = lic && lic.expire ? Math.ceil((parseIso(lic.expire) - parseIso(today())) / 864e5) : null;
     b.hidden = !(left !== null && left <= CFG.alerteJours);
     if (!b.hidden) b.textContent = left <= 0 ? "Votre licence expire aujourd'hui." : `Votre licence expire dans ${left} jour${left > 1 ? 's' : ''} (le ${dayFmt.format(parseIso(lic.expire))}).`;
-    if (!started) { started = true; show('ventes'); } else render();
   }
+  // Pendant l'essai : mise à jour du compte à rebours, blocage à la fin
+  setInterval(() => {
+    if (lic || !trialStart() || document.body.classList.contains('locked')) return;
+    if (trialOver()) lock(); else renderBanner();
+  }, 30e3);
+  $('#lockTrial').addEventListener('click', () => {
+    if (trialActive()) return unlock();
+    if (trialStart()) return;
+    writeJSON(TRIAL_KEY, { debut: Date.now() });
+    unlock();
+    toast(`Essai gratuit activé pour ${CFG.essaiHeures} heures. Bonne découverte !`);
+  });
+
   // Vérification en ligne de la licence enregistrée
   async function verifyOnline() {
     if (!lic) return;
@@ -785,8 +826,8 @@
     $('#lockPrice').textContent = money(CFG.prixMois);
     $('#licRenew').hidden = !CFG.paiementActif;
     // Retour de la page de paiement (ou paiement resté en attente) : on le confirme d'abord
-    if (readJSON(PAY_KEY)) { if (!lic) lock(); confirmPayment(true); if (!lic) return; }
-    if (!lic) return lock();
+    if (readJSON(PAY_KEY)) { if (!lic) { if (trialActive()) unlock(); else lock(); } confirmPayment(true); if (!lic) return; }
+    if (!lic) return trialActive() ? unlock() : lock();
     // Décision immédiate avec la dernière vérification connue (fonctionne hors connexion)
     const days = (Date.now() - (lic.lastCheck || 0)) / 864e5;
     if (lic.expire && lic.expire < today()) lock(lockMessages.expiree);
@@ -826,7 +867,7 @@
     else if (st === 'reseau') toast('Pas de connexion internet');
   });
   $('#licChange').addEventListener('click', () => {
-    if (!confirm('Saisir une autre clé de licence ? Vos données ne seront pas effacées.')) return;
+    if (lic && !confirm('Saisir une autre clé de licence ? Vos données ne seront pas effacées.')) return;
     lic = null; writeJSON(LIC_KEY, null); $('#lockForm').elements.key.value = ''; lock();
   });
   $('#licCopy').addEventListener('click', async () => {
@@ -852,8 +893,8 @@
     payDlg.showModal();
   }
   $('#lockPay').addEventListener('click', () => openPay(false));
-  $('#licRenew').addEventListener('click', () => openPay(true));
-  $('#licBanner').addEventListener('click', () => { if (CFG.paiementActif && lic) openPay(true); });
+  $('#licRenew').addEventListener('click', () => openPay(!!lic));
+  $('#licBanner').addEventListener('click', () => { if (CFG.paiementActif) openPay(!!lic); });
   payForm.addEventListener('submit', async e => {
     if (e.submitter && e.submitter.value === 'cancel') return;
     e.preventDefault();
