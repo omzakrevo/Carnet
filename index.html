@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2b2b2b">
+  <meta name="description" content="Carnet de gestion des ventes : suivez vos ventes, dépenses et crédits clients au quotidien.">
+  <title>Carnet des ventes</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">C</span>
+      <div>
+        <div class="brand-name" id="brandName">Carnet de gestion des ventes</div>
+        <div class="brand-sub" id="brandSub">Touchez « Profil » pour personnaliser</div>
+      </div>
+    </div>
+  </header>
+
+  <main id="app">
+    <!-- VENTES -->
+    <section class="view" id="view-ventes">
+      <div class="datebar">
+        <button class="icon-btn" data-day="-1" aria-label="Jour précédent">‹</button>
+        <label class="date-input">
+          <span id="dayLabel"></span>
+          <input type="date" id="dayPicker" aria-label="Choisir la date">
+        </label>
+        <button class="icon-btn" data-day="1" aria-label="Jour suivant">›</button>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><span>Nombre de ventes</span><strong id="sNb">0</strong></div>
+        <div class="stat accent"><span>Chiffre d'affaires</span><strong id="sCa">0</strong></div>
+        <div class="stat warn"><span>Vente à crédit</span><strong id="sCr">0</strong></div>
+      </div>
+
+      <div class="sheet">
+        <h2 class="script">Suivi des ventes</h2>
+        <div class="table-wrap">
+          <table class="grid">
+            <thead><tr>
+              <th>Heure</th><th>Nom et numéro du client</th><th>Produit</th><th>Qté</th>
+              <th>Prix unitaire</th><th>Prix total</th><th>Mode de paiement</th>
+              <th>Mode de remise</th><th>Observations</th>
+            </tr></thead>
+            <tbody id="ventesBody"></tbody>
+          </table>
+        </div>
+        <p class="empty" id="ventesEmpty">Aucune vente ce jour. Touchez <b>+</b> pour en ajouter une.</p>
+      </div>
+      <div class="row-actions no-print">
+        <button class="btn ghost" id="printDay">Imprimer la page</button>
+      </div>
+    </section>
+
+    <!-- DEPENSES -->
+    <section class="view" id="view-depenses" hidden>
+      <div class="datebar">
+        <button class="icon-btn" data-month="-1" aria-label="Mois précédent">‹</button>
+        <div class="date-input"><span class="monthLabel"></span></div>
+        <button class="icon-btn" data-month="1" aria-label="Mois suivant">›</button>
+      </div>
+      <div class="stats two">
+        <div class="stat"><span>Nombre de dépenses</span><strong id="dNb">0</strong></div>
+        <div class="stat warn"><span>Total dépenses</span><strong id="dTot">0</strong></div>
+      </div>
+      <div class="sheet">
+        <h2 class="script">Suivi des dépenses</h2>
+        <div class="table-wrap">
+          <table class="grid">
+            <thead><tr><th>Date</th><th>Libellé</th><th>Catégorie</th><th>Montant</th><th>Paiement</th></tr></thead>
+            <tbody id="depBody"></tbody>
+          </table>
+        </div>
+        <p class="empty" id="depEmpty">Aucune dépense ce mois. Touchez <b>+</b> pour en ajouter une.</p>
+      </div>
+    </section>
+
+    <!-- CREDITS -->
+    <section class="view" id="view-credits" hidden>
+      <div class="stats two">
+        <div class="stat"><span>Clients débiteurs</span><strong id="cNb">0</strong></div>
+        <div class="stat warn"><span>Reste à encaisser</span><strong id="cTot">0</strong></div>
+      </div>
+      <div class="sheet">
+        <h2 class="script">Ventes à crédit</h2>
+        <ul class="credit-list" id="creditList"></ul>
+        <p class="empty" id="creditEmpty">Aucun crédit en cours. Bravo !</p>
+      </div>
+    </section>
+
+    <!-- BILAN -->
+    <section class="view" id="view-bilan" hidden>
+      <div class="datebar">
+        <button class="icon-btn" data-month="-1" aria-label="Mois précédent">‹</button>
+        <div class="date-input"><span class="monthLabel"></span></div>
+        <button class="icon-btn" data-month="1" aria-label="Mois suivant">›</button>
+      </div>
+      <div class="stats">
+        <div class="stat accent"><span>Chiffre d'affaires</span><strong id="bCa">0</strong></div>
+        <div class="stat warn"><span>Dépenses</span><strong id="bDep">0</strong></div>
+        <div class="stat" id="bBenBox"><span>Bénéfice</span><strong id="bBen">0</strong></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><span>Nombre de ventes</span><strong id="bNb">0</strong></div>
+        <div class="stat"><span>Encaissé</span><strong id="bEnc">0</strong></div>
+        <div class="stat"><span>Crédit du mois</span><strong id="bCr">0</strong></div>
+      </div>
+      <div class="sheet">
+        <h2 class="script">Ventes par jour</h2>
+        <div class="bars" id="bars"></div>
+      </div>
+      <div class="sheet">
+        <h2 class="script">Meilleurs produits</h2>
+        <ol class="top" id="topProduits"></ol>
+      </div>
+      <div class="sheet">
+        <h2 class="script">Modes de paiement</h2>
+        <ul class="top" id="topPaiements"></ul>
+      </div>
+    </section>
+
+    <!-- PROFIL -->
+    <section class="view" id="view-profil" hidden>
+      <div class="cover">
+        <h2 class="script big">Carnet de gestion des ventes</h2>
+        <form id="profilForm" class="form">
+          <label>Nom de la marque<input name="marque" placeholder="Ex : Bazar du coin"></label>
+          <label>Nom du responsable<input name="responsable" placeholder="Votre nom"></label>
+          <label>Contacts<input name="contacts" placeholder="+226 ..."></label>
+          <label>Réseaux sociaux<input name="reseaux" placeholder="@votre_page"></label>
+          <label>Devise<input name="devise" placeholder="FCFA"></label>
+          <button class="btn" type="submit">Enregistrer</button>
+        </form>
+      </div>
+      <div class="sheet">
+        <h2 class="script">Sauvegarde</h2>
+        <p class="muted">Vos données restent sur ce téléphone. Faites une sauvegarde régulière pour ne rien perdre.</p>
+        <div class="btn-col">
+          <button class="btn ghost" id="exportCsv">Exporter les ventes (Excel / CSV)</button>
+          <button class="btn ghost" id="exportJson">Télécharger une sauvegarde</button>
+          <label class="btn ghost file">Restaurer une sauvegarde<input type="file" id="importJson" accept="application/json,.json" hidden></label>
+          <button class="btn danger" id="wipe">Effacer toutes les données</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <button class="fab" id="fab" aria-label="Ajouter">+</button>
+
+  <nav class="tabs" aria-label="Navigation">
+    <button data-view="ventes" class="active"><span>🧾</span>Ventes</button>
+    <button data-view="depenses"><span>💸</span>Dépenses</button>
+    <button data-view="credits"><span>⏳</span>Crédits</button>
+    <button data-view="bilan"><span>📊</span>Bilan</button>
+    <button data-view="profil"><span>⚙️</span>Profil</button>
+  </nav>
+
+  <!-- Formulaire vente -->
+  <dialog id="venteDlg">
+    <form method="dialog" id="venteForm" class="form">
+      <h3>Vente</h3>
+      <div class="two-col">
+        <label>Date<input type="date" name="date" required></label>
+        <label>Heure<input type="time" name="heure"></label>
+      </div>
+      <div class="two-col">
+        <label>Nom du client<input name="client" list="clientsList" autocomplete="off"></label>
+        <label>Numéro<input name="tel" type="tel" inputmode="tel"></label>
+      </div>
+      <label>Produit<input name="produit" list="produitsList" required autocomplete="off"></label>
+      <div class="three-col">
+        <label>Qté<input name="qte" type="number" min="0" step="any" inputmode="decimal" value="1" required></label>
+        <label>Prix unitaire<input name="pu" type="number" min="0" step="any" inputmode="decimal" required></label>
+        <label>Prix total<output name="total" class="total">0</output></label>
+      </div>
+      <div class="two-col">
+        <label>Mode de paiement
+          <select name="paiement">
+            <option>Espèces</option><option>Orange Money</option><option>Moov Money</option>
+            <option>Wave</option><option>Virement</option><option>Crédit</option><option>Autre</option>
+          </select>
+        </label>
+        <label>Mode de remise
+          <select name="remise">
+            <option>Sur place</option><option>Livraison</option><option>Expédition</option><option>Retrait</option>
+          </select>
+        </label>
+      </div>
+      <label class="avance" hidden>Avance déjà versée<input name="avance" type="number" min="0" step="any" inputmode="decimal" value="0"></label>
+      <label>Observations<textarea name="obs" rows="2"></textarea></label>
+      <div class="dlg-actions">
+        <button class="btn danger" value="delete" id="venteDel" type="submit">Supprimer</button>
+        <span class="grow"></span>
+        <button class="btn ghost" value="cancel" formnovalidate>Annuler</button>
+        <button class="btn" value="save" type="submit">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Formulaire dépense -->
+  <dialog id="depDlg">
+    <form method="dialog" id="depForm" class="form">
+      <h3>Dépense</h3>
+      <label>Date<input type="date" name="date" required></label>
+      <label>Libellé<input name="libelle" required placeholder="Ex : Achat stock pagnes"></label>
+      <div class="two-col">
+        <label>Catégorie
+          <select name="categorie">
+            <option>Achat de stock</option><option>Transport / Livraison</option><option>Loyer</option>
+            <option>Publicité</option><option>Salaire</option><option>Crédit téléphone / Internet</option><option>Autre</option>
+          </select>
+        </label>
+        <label>Montant<input name="montant" type="number" min="0" step="any" inputmode="decimal" required></label>
+      </div>
+      <label>Paiement
+        <select name="paiement"><option>Espèces</option><option>Orange Money</option><option>Moov Money</option><option>Wave</option><option>Virement</option><option>Autre</option></select>
+      </label>
+      <div class="dlg-actions">
+        <button class="btn danger" value="delete" id="depDel" type="submit">Supprimer</button>
+        <span class="grow"></span>
+        <button class="btn ghost" value="cancel" formnovalidate>Annuler</button>
+        <button class="btn" value="save" type="submit">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <datalist id="clientsList"></datalist>
+  <datalist id="produitsList"></datalist>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
